@@ -1,0 +1,21 @@
+{
+  "name": "pontos-dourados",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "App do clube de fidelidade da Sua Coxinha. Web, só mobile, instalável como PWA.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.0"
+  }
+}

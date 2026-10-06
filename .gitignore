@@ -1,0 +1,22 @@
+node_modules/
+dist/
+dist-ssr/
+
+# Capacitor gera estas pastas a partir do dist/ — não entram no repositório
+android/
+ios/
+
+.env
+.env.*
+!.env.example
+
+.vercel
+.DS_Store
+Thumbs.db
+*.local
+*.log
+npm-debug.log*
+
+.vscode/*
+!.vscode/extensions.json
+.idea/

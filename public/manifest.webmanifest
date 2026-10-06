@@ -1,0 +1,23 @@
+{
+  "name": "Pontos Dourados · Sua Coxinha",
+  "short_name": "Pontos Dourados",
+  "description": "O clube da Sua Coxinha. Acumule Pontos Dourados a cada compra e troque por coxinha, combos e benefícios.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#131313",
+  "theme_color": "#131313",
+  "categories": ["food", "lifestyle", "shopping"],
+  "icons": [
+    { "src": "./icones/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icones/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icones/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Meu QR Code", "short_name": "QR Code", "url": "./#/qr", "icons": [{ "src": "./icones/icone-192.png", "sizes": "192x192" }] },
+    { "name": "Recompensas", "short_name": "Recompensas", "url": "./#/recompensas", "icons": [{ "src": "./icones/icone-192.png", "sizes": "192x192" }] }
+  ]
+}

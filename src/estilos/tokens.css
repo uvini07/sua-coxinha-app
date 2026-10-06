@@ -1,0 +1,122 @@
+/* Tokens do Pontos Dourados — espelham as variáveis do Figma.
+   Cores primitivas saem da guia de marca oficial da Sua Coxinha; nada foi inventado.
+   Os nomes semânticos (--fundo-base, --texto-ouro...) são o que o app usa. */
+
+:root {
+  /* ---------- Marca ---------- */
+  --preto-gourmet: #131313;
+  --branco: #ffffff;
+  --amarelo-coxinha: #f9c115;
+  --amarelo-magico: #ffeb4a;
+  --marrom-churros: #462302;
+
+  /* ---------- Neutros (quentes, derivados do preto da marca) ---------- */
+  --neutro-950: #0a0a0a;
+  --neutro-900: #0e0e0e;
+  --neutro-850: #131313;
+  --neutro-800: #1a1a1a;
+  --neutro-750: #212121;
+  --neutro-700: #2b2b2b;
+  --neutro-600: #3a3a3a;
+  --neutro-500: #5c5c5c;
+  --neutro-400: #8a8a8a;
+  --neutro-300: #b5b5b5;
+  --neutro-200: #d9d9d9;
+  --neutro-100: #f2f1ee;
+  --neutro-050: #faf9f6;
+  --neutro-000: #ffffff;
+
+  /* ---------- Ouro ---------- */
+  --ouro-050: #fffbeb;
+  --ouro-100: #fff4c2;
+  --ouro-300: #ffeb4a;
+  --ouro-500: #f9c115;
+  --ouro-600: #e0a50c;
+  --ouro-700: #c98a0a;
+  --ouro-800: #8a5a06;
+  --ouro-900: #462302;
+
+  /* ---------- Níveis ---------- */
+  --nivel-bronze: #c8792f;
+  --nivel-prata: #c9ced6;
+  --nivel-ouro: #f9c115;
+  --nivel-diamante: #7fd6e8;
+
+  /* ---------- Sinais ---------- */
+  --sinal-sucesso: #3dd68c;
+  --sinal-alerta: #ffb020;
+  --sinal-erro: #ff5a5a;
+  --sinal-info: #5ac8fa;
+
+  /* ---------- Semânticas ---------- */
+  --fundo-base: var(--neutro-850);
+  --fundo-elevado: var(--neutro-800);
+  --fundo-superficie: var(--neutro-750);
+  --fundo-sunken: var(--neutro-950);
+  --fundo-inverso: var(--neutro-000);
+
+  --texto-primario: var(--neutro-000);
+  --texto-secundario: var(--neutro-400);
+  --texto-sutil: var(--neutro-500);
+  --texto-inverso: var(--neutro-850);
+  --texto-ouro: var(--ouro-500);
+
+  --borda-sutil: var(--neutro-700);
+  --borda-media: var(--neutro-600);
+  --borda-ouro: var(--ouro-500);
+
+  --acao-primaria: var(--ouro-500);
+  --acao-primaria-texto: var(--marrom-churros);
+  --acao-secundaria: var(--neutro-750);
+
+  /* ---------- O dourado ---------- */
+  /* Usado com intenção: saldo, níveis, missões, recompensas e conquistas.
+     Fora disso a tela é preta — é o preto que faz o ouro valer. */
+  --gradiente-ouro: linear-gradient(135deg, #ffeb4a 0%, #f9c115 45%, #e0a50c 100%);
+  --gradiente-ouro-suave: linear-gradient(135deg, rgba(249, 193, 21, 0.16), rgba(249, 193, 21, 0.06));
+  --brilho-ouro: 0 8px 28px -4px rgba(249, 193, 21, 0.35);
+  --brilho-ouro-forte: 0 0 44px rgba(249, 193, 21, 0.5), 0 10px 30px -6px rgba(201, 138, 10, 0.4);
+
+  /* ---------- Sombras ---------- */
+  --sombra-suave: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --sombra-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --sombra-elevada: 0 16px 40px -4px rgba(0, 0, 0, 0.45);
+  --sombra-nav: 0 -8px 28px rgba(0, 0, 0, 0.45);
+
+  /* ---------- Espaço ---------- */
+  --e2: 2px;
+  --e4: 4px;
+  --e8: 8px;
+  --e12: 12px;
+  --e16: 16px;
+  --e20: 20px;
+  --e24: 24px;
+  --e32: 32px;
+  --e40: 40px;
+  --e48: 48px;
+  --e64: 64px;
+
+  /* ---------- Raio ---------- */
+  --raio-xs: 8px;
+  --raio-sm: 12px;
+  --raio-md: 16px;
+  --raio-lg: 20px;
+  --raio-xl: 28px;
+  --raio-2xl: 36px;
+  --raio-pill: 999px;
+
+  /* ---------- Tipografia ---------- */
+  /* ATENÇÃO: a Brown Beige não tem acentos minúsculos nem Á À Â Ã Ç É Í Ú.
+     Ela é a "voz do ouro": só números e palavras maiúsculas sem acento
+     (PONTOS DOURADOS, BRONZE, PRATA, OURO, DIAMANTE). Use a classe .ouro-display.
+     Todo o resto é Satoshi, que tem o português completo. */
+  --fonte-ouro: 'Brown Beige', 'Satoshi', system-ui, sans-serif;
+  --fonte-texto: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+  --margem-tela: 20px;
+  --largura-app: 440px;
+  --altura-nav: 76px;
+
+  --ease-saida: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-entrada-saida: cubic-bezier(0.65, 0, 0.35, 1);
+}

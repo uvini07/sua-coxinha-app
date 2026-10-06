@@ -803,3 +803,17 @@
   color: var(--texto-ouro);
   font-weight: 700;
 }
+
+/* Aviso do login de teste — some junto com src/dados/demo.js */
+.aviso-teste {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e8);
+  padding: 10px var(--e12);
+  border-radius: var(--raio-sm);
+  background: rgba(255, 176, 32, 0.1);
+  border: 1px dashed var(--sinal-alerta);
+  color: var(--sinal-alerta);
+  text-align: left;
+}

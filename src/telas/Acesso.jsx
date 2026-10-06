@@ -5,6 +5,7 @@ import { Botao, Brilho } from '../componentes/primitivos.jsx'
 import { AppBar, Tela } from '../componentes/Tela.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { UNIDADES } from '../dados/clube.js'
+import { LOGIN_DE_TESTE, MODO_TESTE } from '../dados/demo.js' // TEMPORÁRIO
 
 // Máscara de telefone brasileiro, só com os dígitos que o usuário digitou.
 function mascararTelefone(bruto) {
@@ -18,7 +19,8 @@ function mascararTelefone(bruto) {
 export function Entrar() {
   const { ir } = useRota()
   const { atualizarPerfil } = useClube()
-  const [telefone, setTelefone] = useState('')
+  // TEMPORÁRIO: login de teste. Em produção é `useState('')`.
+  const [telefone, setTelefone] = useState(MODO_TESTE ? mascararTelefone(LOGIN_DE_TESTE.telefone) : '')
   const valido = telefone.replace(/\D/g, '').length >= 10
 
   const continuar = () => {
@@ -71,6 +73,13 @@ export function Entrar() {
           </Botao>
         </div>
 
+        {MODO_TESTE && (
+          <p className="aviso-teste mt16">
+            <Icone nome="info" tamanho={15} cor="var(--sinal-alerta)" />
+            <span className="t-peq">Número fixo de teste — sai quando a verificação por WhatsApp entrar</span>
+          </p>
+        )}
+
         <p className="t-peq c-sutil centro mt24">
           Ao continuar você concorda com os Termos de Uso e a Política de Privacidade da Sua Coxinha.
         </p>
@@ -87,7 +96,8 @@ export function Entrar() {
 export function Codigo() {
   const { ir } = useRota()
   const { usuario } = useClube()
-  const [digitos, setDigitos] = useState(['', '', '', ''])
+  // TEMPORÁRIO: código de teste. Em produção é `useState(['', '', '', ''])`.
+  const [digitos, setDigitos] = useState(MODO_TESTE ? LOGIN_DE_TESTE.codigo.split('') : ['', '', '', ''])
   const campos = useRef([])
   const [segundos, setSegundos] = useState(28)
 

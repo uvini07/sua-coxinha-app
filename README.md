@@ -13,8 +13,15 @@ npm run build    # gera dist/
 npm run preview  # serve o dist/ para testar o PWA de verdade
 ```
 
-> **Antes de ir para produção:** a licença comercial da fonte Brown Beige ainda precisa ser
-> comprada. Detalhes e alternativas em [FONTES.md](FONTES.md).
+## Antes de produção
+
+Duas pendências conhecidas, as duas fáceis de esquecer:
+
+1. **Licença da fonte Brown Beige.** A versão na guia de marca é gratuita só para uso
+   pessoal; uso comercial exige comprar. Detalhes e alternativas em [FONTES.md](FONTES.md).
+2. **Login fixo de teste.** `src/dados/demo.js` deixa telefone e código já preenchidos na
+   entrada, porque ainda não existe verificação por WhatsApp. Apagar o arquivo e seguir as
+   duas linhas de instrução que estão nele.
 
 ## O que já funciona
 

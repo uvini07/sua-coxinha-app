@@ -437,7 +437,7 @@ export const NOTIFICACOES_INICIAIS = [
 export const USUARIO_INICIAL = {
   nome: 'Marcelo Jordão',
   primeiroNome: 'Marcelo',
-  telefone: '(11) 98765-4321',
+  telefone: '(11) 97181-3986',
   email: 'marcelinhojordao07@gmail.com',
   cpf: '123.456.789-00',
   nascimento: '07/04/1996',

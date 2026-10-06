@@ -227,6 +227,7 @@ export function Cadastro() {
                 </option>
               ))}
             </select>
+            <Icone nome="seta-baixo" tamanho={18} cor="var(--texto-secundario)" />
           </label>
         </div>
       </div>

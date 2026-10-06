@@ -20,7 +20,13 @@
     <!-- iPhone: sem isso o app abre dentro do Safari mesmo instalado -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- "black", não "black-translucent".
+         O translúcido estende a página por baixo da barra de status e só vale
+         no app instalado — era o que deslocava tudo para cima e deixava uma
+         faixa vazia no rodapé, com o app certo no navegador e torto no PWA.
+         Com "black" a barra fica preta, combinando com o Preto Gourmet, e a
+         página começa logo abaixo dela. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Pontos Dourados" />
     <link rel="apple-touch-icon" href="./icones/apple-touch-icon.png" />
 

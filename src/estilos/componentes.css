@@ -878,6 +878,8 @@
 .campo__caixa select {
   flex: 1;
   min-width: 0;
+  height: 100%;
+  padding: 0;
   background: none;
   border: 0;
   outline: none;
@@ -885,6 +887,11 @@
      e a tela inteira pula. É o que permite devolver o pinça ao usuário. */
   font-size: 16px;
   color: var(--texto-primario);
+}
+/* o select perde a setinha nativa com appearance:none — as telas que usam
+   select desenham a nossa (ícone seta-baixo) ao lado */
+.campo__caixa select {
+  cursor: pointer;
 }
 .campo__caixa input::placeholder {
   color: var(--texto-sutil);

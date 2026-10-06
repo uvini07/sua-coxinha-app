@@ -96,11 +96,35 @@ button {
   cursor: pointer;
 }
 
+/* O iOS aplica estilo próprio em campo e botão: sombra interna, cantos
+   arredondados e altura própria. É o que deixava os campos tortos no app
+   instalado. `appearance: none` devolve o controle para o nosso CSS. */
 input,
 select,
 textarea {
   font: inherit;
   color: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0;
+  background: none;
+  border: 0;
+  margin: 0;
+  /* line-height normal: sem isto o texto do campo fica deslocado para cima
+     dentro da caixa no WebKit */
+  line-height: normal;
+}
+
+input[type='tel'],
+input[type='text'],
+input[type='email'],
+input[type='number'] {
+  min-width: 0;
+}
+
+button {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 h1,

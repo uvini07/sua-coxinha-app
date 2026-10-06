@@ -49,14 +49,24 @@
   box-sizing: border-box;
 }
 
+/* App, não página.
+   O documento não rola: `position: fixed` + `overflow: hidden` matam o
+   rubber-band do iOS e impedem a barra do navegador de subir e descer junto
+   com o dedo. Quem rola é só a área de conteúdo da tela (.tela__area). */
 html {
+  height: 100%;
+  overflow: hidden;
   -webkit-text-size-adjust: 100%;
   background: var(--fundo-sunken);
+  overscroll-behavior: none;
 }
 
 body {
+  position: fixed;
+  inset: 0;
   margin: 0;
-  min-height: 100dvh;
+  height: 100%;
+  overflow: hidden;
   font-family: var(--fonte-texto);
   font-size: 14px;
   line-height: 1.5;
@@ -64,9 +74,10 @@ body {
   background: var(--fundo-sunken);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* app, não página: nada de puxar para recarregar nem seleção acidental */
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  /* tira o atraso de 300 ms e o zoom por toque duplo, sem bloquear o pinça */
+  touch-action: manipulation;
 }
 
 img {
@@ -134,16 +145,18 @@ a {
    moldura, do mesmo jeito que apareceria no aparelho — não há layout de desktop. */
 
 #raiz {
+  height: 100%;
   display: grid;
-  place-items: center;
-  min-height: 100dvh;
+  grid-template-rows: 1fr;
+  justify-items: center;
+  overflow: hidden;
 }
 
 .app {
   position: relative;
   width: 100%;
   max-width: var(--largura-app);
-  min-height: 100dvh;
+  height: 100%;
   background: var(--fundo-base);
   overflow: hidden;
   isolation: isolate;
@@ -155,11 +168,14 @@ a {
 
 @media (min-width: 560px) and (min-height: 700px) {
   #raiz {
+    grid-template-rows: auto auto;
+    align-content: center;
     gap: 18px;
     padding: 24px 0 32px;
   }
   .app {
-    min-height: 0;
+    /* dvh, não %: a linha do grid é `auto` e porcentagem de altura não
+       resolve contra ela — a moldura virava uma faixa de 2px. */
     height: min(900px, 100dvh - 100px);
     border-radius: 44px;
     border: 1px solid var(--neutro-700);

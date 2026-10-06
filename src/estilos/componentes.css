@@ -15,7 +15,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  /* `none` em vez de `contain`: além de não propagar para o documento,
+     tira o quique quando a rolagem chega ao fim. */
+  overscroll-behavior: none;
   padding-bottom: calc(var(--e32) + env(safe-area-inset-bottom, 0px));
 }
 
@@ -879,7 +881,9 @@
   background: none;
   border: 0;
   outline: none;
-  font-size: 15.5px;
+  /* 16px é o mínimo: abaixo disso o iOS dá zoom sozinho ao focar o campo
+     e a tela inteira pula. É o que permite devolver o pinça ao usuário. */
+  font-size: 16px;
   color: var(--texto-primario);
 }
 .campo__caixa input::placeholder {

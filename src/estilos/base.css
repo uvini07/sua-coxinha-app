@@ -146,8 +146,6 @@ a {
    Só existe tela de celular. No computador o app aparece centralizado numa
    moldura, do mesmo jeito que apareceria no aparelho — não há layout de desktop. */
 
-/* --altura-janela vem de src/pwa/altura.js, que mede a janela de verdade.
-   O 100dvh é só a rede de segurança para o primeiro quadro. */
 #raiz {
   height: var(--altura-janela, 100dvh);
   display: grid;
@@ -156,11 +154,23 @@ a {
   overflow: hidden;
 }
 
+/* No celular a moldura é COLADA no viewport, não dimensionada por altura.
+   Qualquer conta — 100vh, 100dvh, 100%, ou a altura medida — pode errar no
+   app instalado, porque o iOS mede a janela de um jeito diferente quando a
+   barra de status é translúcida. O resultado era uma faixa vazia no rodapé,
+   com a altura de uma barra de navegação. Com `fixed` + os quatro lados em
+   zero, quem garante a geometria é o navegador: cobre a tela, seja ela qual
+   for. As margens automáticas centralizam quando a tela é mais larga que o
+   app. O respiro do relógio e da barra de gestos entra por dentro, via
+   safe-area (.safe-topo e .nav). */
 .app {
-  position: relative;
-  width: 100%;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   max-width: var(--largura-app);
-  height: var(--altura-janela, 100dvh);
+  margin-inline: auto;
   background: var(--fundo-base);
   overflow: hidden;
   isolation: isolate;
@@ -182,8 +192,12 @@ a {
     padding: 24px 0 32px;
   }
   .app {
-    /* dvh, não %: a linha do grid é `auto` e porcentagem de altura não
-       resolve contra ela — a moldura virava uma faixa de 2px. */
+    /* no computador ela volta para o fluxo, para a grade centralizar e caber
+       o aviso embaixo. dvh, não %: a linha do grid é `auto` e porcentagem de
+       altura não resolve contra ela — a moldura virava uma faixa de 2px. */
+    position: relative;
+    inset: auto;
+    margin-inline: 0;
     height: min(900px, var(--altura-janela, 100dvh) - 100px);
     border-radius: 44px;
     border: 1px solid var(--neutro-700);

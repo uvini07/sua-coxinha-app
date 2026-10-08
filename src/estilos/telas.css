@@ -793,3 +793,145 @@
   color: var(--sinal-alerta);
   text-align: left;
 }
+
+/* ---------- Área da equipe ---------- */
+
+.aviso-teste--sucesso {
+  background: rgba(61, 214, 140, 0.1);
+  border-color: var(--sinal-sucesso);
+  color: var(--sinal-sucesso);
+}
+
+.faixa-equipe {
+  display: flex;
+  align-items: center;
+  gap: var(--e8);
+  width: 100%;
+  padding: 10px var(--e12);
+  border-radius: var(--raio-pill);
+  background: var(--fundo-elevado);
+  border: 1px solid var(--borda-ouro);
+  color: var(--texto-secundario);
+  text-align: left;
+}
+
+.equipe__acoes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--e12);
+}
+.equipe__acao {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--e8);
+  padding: var(--e16);
+  min-height: 150px;
+  border-radius: var(--raio-lg);
+  background: var(--gradiente-ouro);
+  color: var(--marrom-churros);
+  text-align: left;
+}
+.equipe__acao--escura {
+  background: var(--fundo-elevado);
+  border: 1px solid var(--borda-ouro);
+  color: var(--texto-primario);
+}
+
+.equipe__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--e8);
+}
+.equipe__stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e4);
+  padding: var(--e12);
+  border-radius: var(--raio-md, 12px);
+  background: var(--fundo-elevado);
+  border: 1px solid var(--borda-sutil);
+  min-width: 0;
+}
+.equipe__stats .t-num-m {
+  overflow-wrap: anywhere;
+}
+
+.equipe__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--ouro-500);
+}
+
+.equipe__ok {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: var(--gradiente-ouro);
+}
+
+.ranking__linha {
+  display: flex;
+  align-items: center;
+  gap: var(--e12);
+  padding: var(--e12) 0;
+}
+.ranking__linha--eu .t-forte:first-child {
+  color: var(--texto-ouro);
+}
+.ranking__posicao {
+  width: 28px;
+  font-size: 20px;
+  text-align: center;
+  color: var(--texto-ouro);
+}
+
+.pessoa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e8);
+  padding: var(--e12) 0;
+}
+.pessoa__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e8);
+}
+
+/* Leitor de QR: quadrado, com a mira dourada no meio. */
+.leitor {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--raio-lg);
+  overflow: hidden;
+  background: #000;
+}
+.leitor__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.leitor__mira {
+  position: absolute;
+  inset: 18%;
+  border: 3px solid var(--ouro-500);
+  border-radius: var(--raio-lg);
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35);
+}
+.leitor__falha {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e12);
+  height: 100%;
+  padding: var(--e24);
+  text-align: center;
+  background: var(--fundo-elevado);
+}

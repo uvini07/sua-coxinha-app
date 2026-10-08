@@ -152,7 +152,9 @@ const MENSAGENS = {
   'auth/operation-not-allowed': 'Esse método de login não está habilitado no Firebase.',
   'sem-credencial-nativa': 'O login do aparelho não devolveu as credenciais. Tente de novo.',
   'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos e tente novamente.',
-  'permission-denied': 'Sem permissão para ler seus dados. Confira as regras do Firestore.',
+  'permission-denied': 'O servidor recusou a operação. Confira as regras do Firestore no console.',
+  'catalogo-ausente': 'O catálogo de recompensas ainda não foi publicado. Avise a Sua Coxinha.',
+  'membro-existente': 'Esse e-mail já está cadastrado na equipe.',
   'telefone-em-uso': 'Esse telefone já está em uso por outra conta do clube.',
   unavailable: 'Sem conexão com o servidor. Seus dados aparecem assim que a internet voltar.',
 }

@@ -1,17 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRota } from '../rotas/useRota.js'
 import { useClube } from '../estado/clubeContexto.js'
 import { AppBar, Tela } from '../componentes/Tela.jsx'
 import { Botao, Brilho } from '../componentes/primitivos.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { QRCode } from '../componentes/QRCode.jsx'
-import { UNIDADES } from '../dados/clube.js'
+import { qrDoCliente } from '../firebase/equipe.js'
 
 export function MeuQR() {
   const { ir } = useRota()
-  const { usuario, nivel, registrarCompra, avancarMissao } = useClube()
-  const [simulando, setSimulando] = useState(false)
-  const unidade = UNIDADES.find((u) => u.id === usuario.unidade) || UNIDADES[0]
+  const { uid, usuario, nivel, historico } = useClube()
+
+  // Quando o caixa registra a compra, o extrato ganha uma linha nova em tempo
+  // real. Se ela é de agora (feita com esta tela aberta), vai direto para a
+  // comemoração. Comparar só o id não basta: abrindo o app direto nesta tela,
+  // o extrato antigo chega do servidor depois e pareceria novidade. A folga de
+  // dois minutos cobre relógio de celular adiantado em relação ao servidor.
+  // E a linha que já estava no topo ao abrir nunca é comemorada.
+  const abertaEm = useRef(Date.now())
+  const primeiro = historico[0]
+  const idAoAbrir = useRef(primeiro?.id)
+  useEffect(() => {
+    const quando = primeiro?.criadoEm?.toMillis?.()
+    if (
+      primeiro?.tipo === 'ganho' &&
+      primeiro.id !== idAoAbrir.current &&
+      quando &&
+      quando > abertaEm.current - 120000
+    ) {
+      ir(`/celebracao/pontos?p=${primeiro.pontos}`, { substituir: true })
+    }
+  }, [primeiro, ir])
 
   // Tela de identificação pede brilho alto: avisamos em vez de tentar forçar,
   // porque navegador não controla o brilho do aparelho.
@@ -21,17 +40,6 @@ export function MeuQR() {
       delete document.body.dataset.tela
     }
   }, [])
-
-  const simularCaixa = async () => {
-    setSimulando(true)
-    const pontos = await registrarCompra(5980, unidade.nome)
-    await avancarMissao('sequencia')
-    if (!pontos) {
-      setSimulando(false)
-      return
-    }
-    ir(`/celebracao/pontos?p=${pontos}`, { substituir: true })
-  }
 
   return (
     <Tela className="qr">
@@ -53,7 +61,7 @@ export function MeuQR() {
             </span>
           </div>
 
-          <QRCode valor={usuario.codigo} tamanho={196} />
+          <QRCode valor={qrDoCliente(uid)} tamanho={196} />
 
           <span className="qr__codigo ouro-display">{usuario.codigo}</span>
           <p className="t-peq centro" style={{ color: '#5C5C5C' }}>
@@ -76,15 +84,6 @@ export function MeuQR() {
           <span className="t-peq c-sutil">Deixe o brilho da tela no máximo para o leitor pegar mais rápido</span>
         </span>
 
-        <div className="qr__simulacao">
-          <span className="t-overline c-sutil">Demonstração</span>
-          <p className="t-peq c-secundario">
-            Ainda não existe integração com o PDV. Este botão simula o caixa lendo seu código numa compra de R$ 59,80.
-          </p>
-          <Botao estilo="superficie" tamanho="p" icone="qr" onClick={simularCaixa} desabilitado={simulando}>
-            {simulando ? 'Lendo…' : 'Simular leitura no caixa'}
-          </Botao>
-        </div>
       </div>
     </Tela>
   )

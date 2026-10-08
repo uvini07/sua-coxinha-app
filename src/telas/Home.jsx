@@ -22,7 +22,7 @@ const ATALHOS = [
 
 export function Home() {
   const { ir } = useRota()
-  const { usuario, nivel, missoes, recompensas, historico, naoLidas } = useClube()
+  const { usuario, nivel, missoes, recompensas, historico, naoLidas, papel } = useClube()
 
   const missaoDestaque = missoes.find((m) => !m.concluida && !m.bloqueada) || missoes[0]
   const paraResgatar = [...recompensas].sort((a, b) => a.pontos - b.pontos).slice(0, 6)
@@ -44,6 +44,16 @@ export function Home() {
           {naoLidas > 0 && <i className="home__aviso" />}
         </button>
       </header>
+
+      {papel && (
+        <div className="px mt16">
+          <button type="button" className="faixa-equipe" onClick={() => ir('/equipe')}>
+            <Icone nome="cadeado" tamanho={16} cor="var(--ouro-500)" />
+            <span className="cresce t-peq">Você está vendo o app como cliente</span>
+            <strong className="t-peq c-ouro">Voltar à equipe</strong>
+          </button>
+        </div>
+      )}
 
       <div className="px mt16">
         <CartaoDourado

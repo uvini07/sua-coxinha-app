@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ClubeContexto } from './clubeContexto.js'
-import {
-  MISSOES,
-  PONTOS_POR_REAL,
-  RECOMPENSAS,
-  USUARIO_VAZIO,
-  nivelDe,
-} from '../dados/clube.js'
+import { MISSOES, RECOMPENSAS, UNIDADES, USUARIO_VAZIO, nivelDe } from '../dados/clube.js'
 import {
   concluirRedirecionamento,
   entrarComApple as loginApple,
@@ -17,18 +11,22 @@ import {
   sairDaConta,
 } from '../firebase/autenticacao.js'
 import {
-  avancarMissaoNoBanco,
-  creditarCompra,
   garantirPerfil,
   marcarNotificacoesLidas,
-  marcarVoucherUsado,
   observarColecao,
   observarPerfil,
   reservarTelefone,
   resgatarRecompensa,
   salvarPerfil,
-  zerarConta,
 } from '../firebase/clube.js'
+import {
+  EMAIL_ADMIN,
+  REGRAS_PADRAO,
+  normalizarEmail,
+  observarConfig,
+  observarLojas,
+  observarMembro,
+} from '../firebase/equipe.js'
 import { iniciarAnalytics } from '../firebase/app.js'
 
 // O estado do clube vem do Firebase: a sessão do Authentication e o documento
@@ -50,9 +48,6 @@ const lerOnboarding = () => {
 
 const dinheiro = (centavos) =>
   (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-const agora = () =>
-  new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '')
 
 const codigoVoucher = () => {
   const bloco = () =>
@@ -96,6 +91,14 @@ export function ClubeProvider({ children }) {
   const [erro, setErro] = useState('')
   const [ocupado, setOcupado] = useState(false)
 
+  // Equipe e configuração do clube. `membro` undefined = ainda consultando;
+  // null = a pessoa não é da equipe.
+  const [membro, setMembro] = useState(undefined)
+  const [regrasSalvas, setRegrasSalvas] = useState(null)
+  const [catalogo, setCatalogo] = useState(null)
+  const [lojasSalvas, setLojasSalvas] = useState([])
+  const [lojaEscolhida, setLojaEscolhida] = useState('')
+
   // A tela de notificações marca tudo como lido na saída
   // (`useEffect(() => () => lerNotificacoes(), ...)`). Para isso a função
   // precisa ser estável: se ela mudasse a cada notificação nova, o cleanup
@@ -115,6 +118,7 @@ export function ClubeProvider({ children }) {
         setHistorico([])
         setVouchers([])
         setNotificacoes([])
+        setMembro(undefined)
         return
       }
       try {
@@ -140,6 +144,56 @@ export function ClubeProvider({ children }) {
     ]
     return () => cancelar.forEach((c) => c())
   }, [sessao])
+
+  // --- Papel na equipe e regras do clube ----------------------------------
+
+  // O papel vem de `equipe/{email}`, que só o admin ou o franqueado criam. Uma
+  // falha aqui (sem rede, regra antiga no console) vale como "não é equipe":
+  // a pessoa cai no app de cliente, que é o lado seguro.
+  useEffect(() => {
+    if (!sessao) return undefined
+    if (!sessao.email) {
+      setMembro(null)
+      return undefined
+    }
+    return observarMembro(sessao.email, setMembro, () => setMembro(null))
+  }, [sessao])
+
+  useEffect(() => {
+    if (!sessao) return undefined
+    const ignorar = () => {}
+    const cancelar = [
+      observarConfig('regras', setRegrasSalvas, ignorar),
+      observarConfig('catalogo', setCatalogo, ignorar),
+      observarLojas(setLojasSalvas, ignorar),
+    ]
+    return () => cancelar.forEach((c) => c())
+  }, [sessao])
+
+  const souAdmin = !!sessao?.emailVerified && normalizarEmail(sessao?.email) === EMAIL_ADMIN
+  const papel = souAdmin ? 'admin' : membro?.ativo ? membro.papel : null
+
+  const regras = useMemo(() => ({ ...REGRAS_PADRAO, ...(regrasSalvas || {}) }), [regrasSalvas])
+
+  // Lojas cadastradas no painel; enquanto não houver nenhuma, as do código.
+  const unidades = useMemo(() => {
+    const ativas = lojasSalvas.filter((l) => l.ativa !== false)
+    if (!ativas.length) return UNIDADES
+    return ativas
+      .map((l) => ({ bairro: '', endereco: '', ...l }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }, [lojasSalvas])
+
+  // Em que loja a pessoa está operando o caixa. Equipe: sempre a dela.
+  // Admin: a que escolher no seletor do painel.
+  const lojaOperacao = papel === 'admin' ? lojaEscolhida || unidades[0]?.id || '' : membro?.loja || ''
+
+  // O preço em pontos vem do catálogo publicado pelo admin — é ele que a
+  // regra do resgate confere, então a tela tem de mostrar o mesmo número.
+  const recompensas = useMemo(() => {
+    const precos = catalogo?.pontos || {}
+    return RECOMPENSAS.map((r) => (precos[r.id] ? { ...r, pontos: precos[r.id] } : r))
+  }, [catalogo])
 
   // --- Formato que as telas consomem --------------------------------------
 
@@ -273,6 +327,12 @@ export function ClubeProvider({ children }) {
   const resgatar = useCallback(
     async (recompensa) => {
       if (!sessao) return null
+      // Sem catálogo publicado a regra recusa todo resgate; melhor dizer o
+      // motivo do que mostrar "sem permissão".
+      if (!catalogo) {
+        setErro(mensagemDeErro({ code: 'catalogo-ausente' }))
+        return null
+      }
       try {
         return await resgatarRecompensa(sessao.uid, recompensa, codigoVoucher())
       } catch (e) {
@@ -280,56 +340,7 @@ export function ClubeProvider({ children }) {
         return null
       }
     },
-    [sessao],
-  )
-
-  // Gancho da integração com o PDV: hoje chamado pelo botão de simulação da
-  // tela do QR, amanhã por uma Cloud Function disparada pelo caixa.
-  const registrarCompra = useCallback(
-    async (valorCentavos, unidade = 'Cajamar') => {
-      if (!sessao) return 0
-      const pontos = Math.round((valorCentavos / 100) * PONTOS_POR_REAL)
-      try {
-        await creditarCompra(sessao.uid, {
-          pontos,
-          valor: valorCentavos,
-          unidade,
-          detalhe: `${unidade} · ${agora()}`,
-        })
-        return pontos
-      } catch (e) {
-        setErro(mensagemDeErro(e))
-        return 0
-      }
-    },
-    [sessao],
-  )
-
-  const avancarMissao = useCallback(
-    async (id) => {
-      if (!sessao) return null
-      const base = MISSOES.find((m) => m.id === id)
-      if (!base) return null
-      try {
-        return await avancarMissaoNoBanco(sessao.uid, base)
-      } catch (e) {
-        setErro(mensagemDeErro(e))
-        return null
-      }
-    },
-    [sessao],
-  )
-
-  const usarVoucher = useCallback(
-    async (id) => {
-      if (!sessao) return
-      try {
-        await marcarVoucherUsado(sessao.uid, id)
-      } catch (e) {
-        setErro(mensagemDeErro(e))
-      }
-    },
-    [sessao],
+    [sessao, catalogo],
   )
 
   const lerNotificacoes = useCallback(async () => {
@@ -343,19 +354,10 @@ export function ClubeProvider({ children }) {
     }
   }, [sessao])
 
-  const reiniciar = useCallback(async () => {
-    if (!sessao) return
-    try {
-      await zerarConta(sessao.uid)
-    } catch (e) {
-      setErro(mensagemDeErro(e))
-    }
-  }, [sessao])
-
   const valor = useMemo(
     () => ({
       // sessão
-      carregando: sessao === undefined,
+      carregando: sessao === undefined || (!!sessao && membro === undefined),
       autenticado: !!sessao,
       uid: sessao?.uid || null,
       cadastroCompleto: !!perfil?.cadastroCompleto,
@@ -368,7 +370,19 @@ export function ClubeProvider({ children }) {
       usuario,
       nivel,
       missoes,
-      recompensas: RECOMPENSAS,
+      recompensas,
+      catalogoPublicado: !!catalogo,
+      // O que a regra do Firestore exige existir antes de o caixa funcionar.
+      configuracao: { lojas: lojasSalvas.length > 0, regras: !!regrasSalvas, catalogo: !!catalogo },
+      regras,
+      unidades,
+
+      // equipe
+      email: sessao?.email || '',
+      papel,
+      membro: membro || null,
+      lojaOperacao,
+      escolherLoja: setLojaEscolhida,
       historico: historicoFormatado,
       vouchers,
       notificacoes: notificacoesFormatadas,
@@ -383,11 +397,7 @@ export function ClubeProvider({ children }) {
       concluirCadastro,
       atualizarPerfil,
       resgatar,
-      registrarCompra,
-      avancarMissao,
-      usarVoucher,
       lerNotificacoes,
-      reiniciar,
     }),
     [
       sessao,
@@ -408,11 +418,16 @@ export function ClubeProvider({ children }) {
       concluirCadastro,
       atualizarPerfil,
       resgatar,
-      registrarCompra,
-      avancarMissao,
-      usarVoucher,
       lerNotificacoes,
-      reiniciar,
+      membro,
+      papel,
+      lojaOperacao,
+      recompensas,
+      catalogo,
+      regras,
+      regrasSalvas,
+      lojasSalvas,
+      unidades,
     ],
   )
 

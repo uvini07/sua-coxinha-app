@@ -2,39 +2,130 @@ rules_version = '2';
 
 // REGRAS DO FIRESTORE — Pontos Dourados
 //
-// Publicar:  firebase deploy --only firestore:rules
+// Publicar:  Firebase → Firestore → Regras → colar este arquivo → Publicar
+//       ou:  firebase deploy --only firestore:rules
 //
-// O que estas regras garantem hoje:
-//   · cada cliente só alcança o próprio documento e as próprias subcoleções;
-//   · ninguém lê a carteira de outra pessoa, nem lista a coleção `usuarios`;
-//   · uma conta nova nasce obrigatoriamente com saldo zero.
+// QUEM É QUEM
+//   · Admin master  — o e-mail fixo em `souAdmin()`. Vê todas as lojas, muda as
+//                     regras, cadastra franqueados, dá e tira permissão.
+//   · Franqueado    — documento em `equipe/{email}` com papel 'franqueado'.
+//                     Só enxerga a própria loja e cadastra os funcionários dela.
+//   · Funcionário   — documento em `equipe/{email}` com papel 'funcionario'.
+//   · Cliente       — qualquer conta logada; só alcança a própria carteira.
 //
-// ⚠️ PENDÊNCIA PARA PRODUÇÃO — saldo escrito pelo cliente.
-// Enquanto não existe integração com o PDV, o app credita pontos direto do
-// navegador (o botão "Simular leitura no caixa"). Isso significa que um cliente
-// com conhecimento técnico consegue se dar pontos. É aceitável em teste e
-// inaceitável quando o clube for real.
+// Ninguém "vira" equipe sozinho: o documento em `equipe` só é criado pelo
+// admin ou pelo franqueado. A pessoa entra com o Google usando o e-mail que
+// foi cadastrado, e é o e-mail verificado do token que liga as duas coisas.
 //
-// Quando a Cloud Function do caixa entrar, troque o bloco `allow update` do
-// documento do usuário pelo que está comentado no fim deste arquivo: aí só o
-// Admin SDK (que ignora estas regras) mexe em saldo e acumulado.
+// DE ONDE VÊM OS PONTOS
+// O cliente não consegue mais se dar pontos. Saldo só sobe quando alguém da
+// equipe registra uma compra no caixa, e cada crédito precisa vir acompanhado
+// de um lançamento em `lancamentos/{id}` (o livro de auditoria): quem
+// registrou, em qual loja, de qual valor, quantos pontos. As regras conferem a
+// conta dos pontos contra `config/regras`, então nem a equipe consegue lançar
+// mais pontos do que a compra vale.
+//
+// O amarramento é sempre o mesmo: o documento que muda (carteira do cliente,
+// voucher, contador da equipe) aponta para o id do lançamento novo, e o
+// lançamento só pode ser criado se esse documento apontar para ele no mesmo
+// lote. Um lado não existe sem o outro, e um lançamento não pode ser reusado.
+//
+// LIMITE CONHECIDO (sem servidor)
+// A equipe é confiável até certo ponto: um funcionário pode registrar uma
+// compra que não existiu para um conhecido. As regras impedem que ele credite
+// a si mesmo, limitam o valor por compra e deixam tudo assinado no livro.
+// Fechar isso de vez exige a integração com o PDV (Cloud Functions, Blaze).
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- Identidade --------------------------------------------------------
+
+    function logado() {
+      return request.auth != null;
+    }
+
+    function emailLogado() {
+      return request.auth.token.get('email', '').lower();
+    }
+
+    function emailVerificado() {
+      return request.auth.token.get('email_verified', false) == true;
+    }
+
+    function souAdmin() {
+      return logado() && emailVerificado()
+          && emailLogado() == 'marcelinhojordao07@gmail.com';
+    }
+
+    function caminhoEquipe() {
+      return /databases/$(database)/documents/equipe/$(emailLogado());
+    }
+
+    function membro() {
+      return get(caminhoEquipe()).data;
+    }
+
+    function souEquipe() {
+      return logado() && emailVerificado()
+          && exists(caminhoEquipe())
+          && membro().ativo == true;
+    }
+
+    function souFranqueado() {
+      return souEquipe() && membro().papel == 'franqueado';
+    }
+
+    function minhaLoja() {
+      return membro().loja;
+    }
+
+    // Admin opera em qualquer loja; a equipe, só na própria.
+    function operador() {
+      return souAdmin() || souEquipe();
+    }
+
+    function podeOperarLoja(loja) {
+      return souAdmin() || (souEquipe() && minhaLoja() == loja);
+    }
+
+    // --- Utilidades --------------------------------------------------------
+
+    function regras() {
+      return get(/databases/$(database)/documents/config/regras).data;
+    }
+
+    function lancamentoDepois(id) {
+      return getAfter(/databases/$(database)/documents/lancamentos/$(id)).data;
+    }
+
+    function lancamentoJaExistia(id) {
+      return exists(/databases/$(database)/documents/lancamentos/$(id));
+    }
+
+    function mudouSo(campos) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
+    }
+
+    function mudouAlgum(campos) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(campos);
+    }
+
+    // p == piso(base × taxa ÷ 100), escrito só com inteiros. Os valores em
+    // dinheiro estão em centavos; `taxa` é "pontos por real".
+    function piso(p, base, taxa) {
+      return p is int && p * 100 <= base * taxa && (p + 1) * 100 > base * taxa;
+    }
+
+    // --- Carteira do cliente ----------------------------------------------
+
     match /usuarios/{uid} {
       function meu() {
-        return request.auth != null && request.auth.uid == uid;
+        return logado() && request.auth.uid == uid;
       }
 
-      // Conta nova nasce zerada. Esta é a regra do produto, escrita onde o
-      // cliente não consegue burlar: nem com o app alterado dá para criar um
-      // documento já com pontos.
-      // `get(campo, -1)` em vez de `data.campo`: ler um campo que não existe
-      // é erro de avaliação nas regras do Firestore, e erro de avaliação nega
-      // a operação por um motivo que não aparece em lugar nenhum. Com o padrão
-      // -1, um documento criado sem o contador é recusado limpamente — que é o
-      // que queremos de qualquer jeito: os cinco têm de estar lá, em zero.
+      // Conta nova nasce zerada. `get(campo, -1)`: ler campo ausente é erro de
+      // avaliação, e erro nega por um motivo que não aparece em lugar nenhum.
       function nasceZerada() {
         return request.resource.data.get('saldo', -1) == 0
             && request.resource.data.get('acumulado', -1) == 0
@@ -43,42 +134,239 @@ service cloud.firestore {
             && request.resource.data.get('resgates', -1) == 0;
       }
 
-      allow get: if meu();
+      // O cliente mexe no próprio perfil, nunca nos números.
+      function pontosIntactos() {
+        return !mudouAlgum(['saldo', 'acumulado', 'pendentes', 'aExpirar',
+                            'resgates', 'missoes', 'ultimoLancamento', 'ultimoVoucher']);
+      }
+
+      // Resgate: o saldo só desce, exatamente o preço do voucher criado
+      // no mesmo lote — e o preço do voucher é conferido contra o catálogo.
+      function resgateValido() {
+        let v = request.resource.data.ultimoVoucher;
+        let caminho = /databases/$(database)/documents/usuarios/$(uid)/vouchers/$(v);
+        return mudouSo(['saldo', 'resgates', 'ultimoVoucher', 'atualizadoEm'])
+            && !exists(caminho)
+            && request.resource.data.saldo == resource.data.saldo - getAfter(caminho).data.pontos
+            && request.resource.data.saldo >= 0
+            && request.resource.data.resgates == resource.data.resgates + 1;
+      }
+
+      // Compra no caixa: só a equipe, nunca na própria conta, e sempre
+      // amarrada a um lançamento novo que diz quantos pontos são.
+      function compraValida() {
+        let id = request.resource.data.ultimoLancamento;
+        let l = lancamentoDepois(id);
+        return operador()
+            && request.auth.uid != uid
+            && mudouSo(['saldo', 'acumulado', 'ultimoLancamento', 'atualizadoEm'])
+            && !lancamentoJaExistia(id)
+            && l.tipo == 'compra'
+            && l.cliente == uid
+            && request.resource.data.saldo == resource.data.saldo + l.pontos
+            && request.resource.data.acumulado == resource.data.acumulado + l.pontos;
+      }
+
+      // A equipe lê a carteira para mostrar nome e saldo no caixa.
+      allow get: if meu() || operador();
       allow create: if meu() && nasceZerada();
-      allow update: if meu();
+      allow update: if (meu() && pontosIntactos())
+                    || (meu() && resgateValido())
+                    || compraValida();
       allow delete: if meu();
 
-      // Ninguém lista a coleção inteira: `list` fica fora de propósito.
+      // Ninguém lista a coleção inteira.
       allow list: if false;
 
-      match /{colecao}/{documento} {
-        allow read, write: if request.auth != null
-                           && request.auth.uid == uid
-                           && colecao in ['historico', 'vouchers', 'notificacoes'];
+      // Extrato. O cliente só escreve o lançamento do próprio resgate (com o
+      // mesmo id do voucher); a equipe, o da compra (com o id do lançamento).
+      match /historico/{id} {
+        allow read: if meu();
+        allow delete: if meu();
+        allow update: if false;
+        allow create: if (meu()
+                          && request.resource.data.tipo == 'resgate'
+                          && getAfter(/databases/$(database)/documents/usuarios/$(uid)).data.ultimoVoucher == id
+                          && request.resource.data.pontos
+                             == -getAfter(/databases/$(database)/documents/usuarios/$(uid)/vouchers/$(id)).data.pontos)
+                      || (operador()
+                          && request.resource.data.tipo == 'ganho'
+                          && getAfter(/databases/$(database)/documents/usuarios/$(uid)).data.ultimoLancamento == id
+                          && request.resource.data.pontos == lancamentoDepois(id).pontos);
+      }
+
+      match /vouchers/{id} {
+        // A equipe lista os vouchers do cliente no caixa.
+        allow read: if meu() || operador();
+        allow delete: if meu();
+
+        allow create: if meu()
+                      && getAfter(/databases/$(database)/documents/usuarios/$(uid)).data.ultimoVoucher == id
+                      && request.resource.data.estado == 'disponivel'
+                      && request.resource.data.pontos is int
+                      && request.resource.data.pontos > 0
+                      && request.resource.data.pontos
+                         == get(/databases/$(database)/documents/config/catalogo).data.pontos[request.resource.data.recompensaId];
+
+        // Só a equipe dá baixa, uma vez, e nunca no voucher da própria conta.
+        allow update: if operador()
+                      && request.auth.uid != uid
+                      && resource.data.estado == 'disponivel'
+                      && request.resource.data.estado == 'utilizado'
+                      && mudouSo(['estado', 'usadoEm', 'usadoPor', 'lojaUso', 'lancamento'])
+                      && request.resource.data.usadoEm == request.time
+                      && request.resource.data.usadoPor == emailLogado()
+                      && podeOperarLoja(request.resource.data.lojaUso)
+                      && !lancamentoJaExistia(request.resource.data.lancamento)
+                      && lancamentoDepois(request.resource.data.lancamento).voucher == id
+                      && lancamentoDepois(request.resource.data.lancamento).cliente == uid;
+      }
+
+      match /notificacoes/{id} {
+        allow read: if meu();
+        allow delete: if meu();
+        allow update: if meu() && mudouSo(['nova']);
+        // Aviso de pontos que a equipe deixa junto com a compra.
+        allow create: if operador()
+                      && getAfter(/databases/$(database)/documents/usuarios/$(uid)).data.ultimoLancamento == id
+                      && lancamentoDepois(id).cliente == uid;
       }
     }
 
-    // RESERVA DE TELEFONE — a unicidade que o login por SMS dava de graça.
+    // --- Livro de lançamentos (auditoria) ---------------------------------
     //
-    // Um documento por número (a chave é o próprio E.164), apontando para o
-    // dono. `create` só vale para número que ainda não existe, então o primeiro
-    // que reivindica fica com ele e os outros são recusados pela própria regra.
-    //
-    // Ninguém lê esta coleção: liberar a leitura deixaria qualquer cliente
-    // logado testar números e descobrir quem está no clube. Por isso a tentativa
-    // de escrita é a checagem, e o app traduz a recusa em "telefone já em uso".
-    match /telefones/{numero} {
-      function souODono() {
-        return request.auth != null && resource.data.uid == request.auth.uid;
+    // Imutável: ninguém edita nem apaga. Cada linha diz quem fez, onde, quando
+    // e quanto. É daqui que saem o ranking, os relatórios e o rastreio de
+    // origem/destino de cada ponto entre as lojas.
+
+    match /lancamentos/{id} {
+      function novo() {
+        return request.resource.data;
       }
 
-      allow create: if request.auth != null
-                    && request.resource.data.uid == request.auth.uid;
-      allow delete: if souODono();
+      function compraOk() {
+        return novo().tipo == 'compra'
+            && novo().valor is int
+            && novo().valor > 0
+            && novo().valor <= regras().valorMaximo
+            && piso(novo().pontos, novo().valor, regras().pontosPorReal)
+            && piso(novo().pontosEquipe, novo().valor, regras().metaPontosPorReal)
+            && getAfter(/databases/$(database)/documents/usuarios/$(novo().cliente)).data.ultimoLancamento == id;
+      }
 
-      // O número não muda de dono no lugar: libera-se e reivindica-se de novo.
+      function voucherOk() {
+        return novo().tipo == 'voucher'
+            && novo().valor == 0
+            && novo().pontos == 0
+            && novo().pontosEquipe == regras().metaPontosPorVoucher
+            && getAfter(/databases/$(database)/documents/usuarios/$(novo().cliente)/vouchers/$(novo().voucher)).data.lancamento == id;
+      }
+
+      allow create: if operador()
+                    && novo().criadoEm == request.time
+                    && novo().operador == emailLogado()
+                    && novo().operadorUid == request.auth.uid
+                    && novo().cliente != request.auth.uid
+                    && podeOperarLoja(novo().loja)
+                    && (compraOk() || voucherOk());
+
+      // Admin vê tudo; franqueado, a loja dele; funcionário, só o que ele fez.
+      allow read: if souAdmin()
+                  || (souFranqueado() && resource.data.loja == minhaLoja())
+                  || (souEquipe() && resource.data.operador == emailLogado());
+
+      allow update, delete: if false;
+    }
+
+    // --- Equipe -------------------------------------------------------------
+    //
+    // Um documento por e-mail (minúsculo). Os contadores da meta (vendas,
+    // compras, vouchers, pontos) só andam junto com um lançamento novo feito
+    // pela própria pessoa — ninguém digita a própria meta.
+
+    match /equipe/{email} {
+      function cadastroOk() {
+        let d = request.resource.data;
+        return email == email.lower()
+            && d.email == email
+            && d.papel in ['franqueado', 'funcionario']
+            && d.ativo == true
+            && d.pontos == 0 && d.vendas == 0 && d.compras == 0 && d.vouchers == 0
+            && d.criadoPor == emailLogado()
+            && exists(/databases/$(database)/documents/lojas/$(d.loja));
+      }
+
+      function metaValida() {
+        let id = request.resource.data.ultimoLancamento;
+        let l = lancamentoDepois(id);
+        let compra = l.tipo == 'compra';
+        return emailLogado() == email
+            && souEquipe()
+            && mudouSo(['pontos', 'vendas', 'compras', 'vouchers', 'ultimoLancamento'])
+            && !lancamentoJaExistia(id)
+            && l.operador == email
+            && request.resource.data.pontos == resource.data.pontos + l.pontosEquipe
+            && request.resource.data.vendas == resource.data.vendas + l.valor
+            && request.resource.data.compras == resource.data.compras + (compra ? 1 : 0)
+            && request.resource.data.vouchers == resource.data.vouchers + (compra ? 0 : 1);
+      }
+
+      // Cada um lê o próprio cadastro (é assim que o app descobre o papel);
+      // a equipe vê os colegas da mesma loja, para o ranking.
+      allow get: if logado() && (emailLogado() == email || souAdmin()
+                    || (souEquipe() && resource.data.loja == minhaLoja()));
+      allow list: if souAdmin() || (souEquipe() && resource.data.loja == minhaLoja());
+
+      allow create: if (souAdmin() && cadastroOk())
+                    || (souFranqueado() && cadastroOk()
+                        && request.resource.data.loja == minhaLoja()
+                        && request.resource.data.papel == 'funcionario');
+
+      // Admin muda tudo (papel, loja, ativo, zera meta após troca de prêmio).
+      // Franqueado só liga/desliga e renomeia funcionário da própria loja.
+      allow update: if souAdmin()
+                    || (souFranqueado()
+                        && resource.data.loja == minhaLoja()
+                        && resource.data.papel == 'funcionario'
+                        && mudouSo(['ativo', 'nome', 'atualizadoEm']))
+                    || metaValida();
+
+      allow delete: if souAdmin()
+                    || (souFranqueado()
+                        && resource.data.loja == minhaLoja()
+                        && resource.data.papel == 'funcionario');
+    }
+
+    // --- Lojas e regras do clube (só o admin escreve) ---------------------
+
+    match /lojas/{loja} {
+      allow read: if logado();
+      allow write: if souAdmin();
+    }
+
+    // config/regras   — pontos por real, teto por compra, metas da equipe
+    // config/catalogo — preço em pontos de cada recompensa
+    match /config/{documento} {
+      allow read: if logado();
+      allow write: if souAdmin();
+    }
+
+    // --- Reserva de telefone ----------------------------------------------
+    //
+    // Um documento por número, apontando para o dono. `create` só vale para
+    // número livre. Cliente não lê (não dá para sondar quem é do clube); a
+    // equipe lê um número exato para achar o cliente no caixa.
+
+    match /telefones/{numero} {
+      function souODono() {
+        return logado() && resource.data.uid == request.auth.uid;
+      }
+
+      allow create: if logado() && request.resource.data.uid == request.auth.uid;
+      allow delete: if souODono();
       allow update: if false;
-      allow read: if false;
+      allow get: if operador();
+      allow list: if false;
     }
 
     // Nada mais no banco é alcançável pelo app.
@@ -87,17 +375,3 @@ service cloud.firestore {
     }
   }
 }
-
-// --- Versão para quando o PDV estiver integrado -----------------------------
-//
-//      function pontosIntactos() {
-//        return request.resource.data.saldo == resource.data.saldo
-//            && request.resource.data.acumulado == resource.data.acumulado
-//            && request.resource.data.resgates == resource.data.resgates
-//            && request.resource.data.missoes == resource.data.missoes;
-//      }
-//
-//      allow update: if meu() && pontosIntactos();
-//
-// E as subcoleções `historico` e `vouchers` passam a ser somente leitura para
-// o cliente — quem escreve nelas é a função do servidor.

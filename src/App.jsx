@@ -15,13 +15,23 @@ import { Perfil, Configuracoes } from './telas/Perfil.jsx'
 import { Notificacoes } from './telas/Notificacoes.jsx'
 import { Niveis } from './telas/Niveis.jsx'
 import { Celebracao } from './telas/Celebracao.jsx'
+import { CaixaCompra, CaixaVoucher, Lojas, Movimento, PainelEquipe, Pessoas, RegrasClube } from './telas/Equipe.jsx'
 
 // Rotas que podem ser abertas sem estar logado.
 const ABERTAS = ['/', '/onboarding', '/entrar']
 
+// Páginas da área da equipe e quem pode abrir cada uma. O que não está aqui
+// vale para qualquer papel. (Conforto de navegação: a permissão de verdade é
+// das regras do Firestore.)
+const SO_PARA = {
+  pessoas: ['admin', 'franqueado'],
+  regras: ['admin'],
+  lojas: ['admin'],
+}
+
 export function App() {
   const { caminho, partes, params, ir } = useRota()
-  const { autenticado, carregando, cadastroCompleto, onboardingVisto } = useClube()
+  const { autenticado, carregando, cadastroCompleto, onboardingVisto, papel } = useClube()
 
   // Porteiro: onboarding antes de tudo, login antes do app, cadastro antes de
   // qualquer tela com pontos. Enquanto o Firebase ainda está dizendo se existe
@@ -44,6 +54,25 @@ export function App() {
       return
     }
 
+    // Equipe: o login leva direto para a área da equipe, sem exigir o
+    // cadastro de cliente. Para ver o app como cliente, aí sim passa pelo
+    // cadastro como qualquer pessoa.
+    const naEquipe = partes[0] === 'equipe'
+    if (papel) {
+      if (caminho === '/entrar') {
+        ir('/equipe', { substituir: true })
+        return
+      }
+      if (naEquipe) {
+        const permitidos = SO_PARA[partes[1]]
+        if (permitidos && !permitidos.includes(papel)) ir('/equipe', { substituir: true })
+        return
+      }
+    } else if (naEquipe) {
+      ir('/home', { substituir: true })
+      return
+    }
+
     // Logado mas sem cadastro fechado: só a etapa 2 e a celebração que vem
     // logo depois dela (o documento no Firestore pode levar um quadro para
     // chegar de volta, e seria feio piscar o cadastro de novo).
@@ -58,7 +87,7 @@ export function App() {
     if (['/entrar', '/cadastro'].includes(caminho)) {
       ir('/home', { substituir: true })
     }
-  }, [caminho, autenticado, carregando, cadastroCompleto, onboardingVisto, ir])
+  }, [caminho, partes, autenticado, carregando, cadastroCompleto, onboardingVisto, papel, ir])
 
   const tela = () => {
     switch (partes[0]) {
@@ -102,8 +131,29 @@ export function App() {
         return <Niveis />
       case 'celebracao':
         return <Celebracao tipo={partes[1]} params={params} />
+      case 'equipe':
+        return telaDaEquipe(partes[1])
       default:
         return <Home />
+    }
+  }
+
+  const telaDaEquipe = (pagina) => {
+    switch (pagina) {
+      case 'compra':
+        return <CaixaCompra />
+      case 'voucher':
+        return <CaixaVoucher />
+      case 'movimento':
+        return <Movimento />
+      case 'pessoas':
+        return <Pessoas />
+      case 'regras':
+        return <RegrasClube />
+      case 'lojas':
+        return <Lojas />
+      default:
+        return <PainelEquipe />
     }
   }
 

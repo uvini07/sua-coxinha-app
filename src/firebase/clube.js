@@ -163,36 +163,15 @@ export function salvarPerfil(uid, campos) {
   return updateDoc(refUsuario(uid), { ...campos, atualizadoEm: serverTimestamp() })
 }
 
-// Compra identificada no caixa: credita pontos e lança no extrato.
-export async function creditarCompra(uid, { pontos, valor, unidade, detalhe }) {
-  const lancamento = doc(refColecao(uid, 'historico'))
-  const lote = writeBatch(db)
-
-  lote.update(refUsuario(uid), {
-    saldo: increment(pontos),
-    acumulado: increment(pontos),
-    atualizadoEm: serverTimestamp(),
-  })
-  lote.set(lancamento, {
-    tipo: 'ganho',
-    titulo: 'Compra na Sua Coxinha',
-    detalhe,
-    pontos,
-    valor,
-    unidade,
-    data: new Date().toISOString().slice(0, 10),
-    criadoEm: serverTimestamp(),
-  })
-
-  await lote.commit()
-  return pontos
-}
-
 // Resgate: a transação é obrigatória aqui. Sem ela, dois toques rápidos no
 // botão gerariam dois vouchers com um saldo que só paga um.
+//
+// O voucher e a linha do extrato usam o mesmo id, e a carteira aponta para
+// ele em `ultimoVoucher`: é assim que a regra do Firestore confere que o saldo
+// desceu exatamente o preço do catálogo (`config/catalogo`), nem um ponto a menos.
 export async function resgatarRecompensa(uid, recompensa, codigo) {
   const refVoucher = doc(refColecao(uid, 'vouchers'))
-  const refLancamento = doc(refColecao(uid, 'historico'))
+  const refLancamento = doc(db, 'usuarios', uid, 'historico', refVoucher.id)
 
   const voucher = await runTransaction(db, async (tx) => {
     const snap = await tx.get(refUsuario(uid))
@@ -214,6 +193,7 @@ export async function resgatarRecompensa(uid, recompensa, codigo) {
     tx.update(refUsuario(uid), {
       saldo: increment(-recompensa.pontos),
       resgates: increment(1),
+      ultimoVoucher: refVoucher.id,
       atualizadoEm: serverTimestamp(),
     })
     tx.set(refVoucher, dados)
@@ -232,51 +212,6 @@ export async function resgatarRecompensa(uid, recompensa, codigo) {
   return voucher
 }
 
-// Avança uma missão e, se ela fechar, paga o bônus. Transação pelo mesmo
-// motivo do resgate: o bônus não pode cair duas vezes.
-export async function avancarMissaoNoBanco(uid, base) {
-  const refLancamento = doc(refColecao(uid, 'historico'))
-
-  return runTransaction(db, async (tx) => {
-    const snap = await tx.get(refUsuario(uid))
-    if (!snap.exists()) return null
-
-    const salvas = snap.get('missoes') || {}
-    const atual = salvas[base.id] || { feito: 0, concluida: false }
-    if (atual.concluida) return null
-
-    const feito = Math.min(base.meta, (atual.feito || 0) + 1)
-    const concluida = feito >= base.meta
-
-    const campos = {
-      [`missoes.${base.id}`]: { feito, concluida },
-      atualizadoEm: serverTimestamp(),
-    }
-    if (concluida) {
-      campos.saldo = increment(base.recompensa)
-      campos.acumulado = increment(base.recompensa)
-      tx.set(refLancamento, {
-        tipo: 'bonus',
-        titulo: 'Missão Dourada concluída',
-        detalhe: base.titulo,
-        pontos: base.recompensa,
-        data: new Date().toISOString().slice(0, 10),
-        criadoEm: serverTimestamp(),
-      })
-    }
-    tx.update(refUsuario(uid), campos)
-
-    return { feito, concluida, bonus: concluida ? base.recompensa : 0 }
-  })
-}
-
-export function marcarVoucherUsado(uid, id) {
-  return updateDoc(doc(db, 'usuarios', uid, 'vouchers', id), {
-    estado: 'utilizado',
-    usadoEm: serverTimestamp(),
-  })
-}
-
 export async function marcarNotificacoesLidas(uid, ids) {
   if (!ids.length) return
   const lote = writeBatch(db)
@@ -284,9 +219,9 @@ export async function marcarNotificacoesLidas(uid, ids) {
   await lote.commit()
 }
 
-// Zera a conta mantendo o login: apaga extrato, vouchers, avisos e devolve o
-// saldo a zero. É o "reiniciar demonstração" da tela de configurações.
-export async function zerarConta(uid) {
+// Apaga extrato, vouchers e avisos. Saldo não volta a zero por aqui: quem
+// mexe em pontos é o caixa, e as regras recusam o cliente fazendo isso.
+async function apagarSubcolecoes(uid) {
   for (const nome of ['historico', 'vouchers', 'notificacoes']) {
     const snap = await getDocs(refColecao(uid, nome))
     for (let i = 0; i < snap.docs.length; i += 400) {
@@ -295,15 +230,6 @@ export async function zerarConta(uid) {
       await lote.commit()
     }
   }
-  await updateDoc(refUsuario(uid), {
-    saldo: 0,
-    pendentes: 0,
-    aExpirar: 0,
-    acumulado: 0,
-    resgates: 0,
-    missoes: {},
-    atualizadoEm: serverTimestamp(),
-  })
 }
 
 // Apaga a conta inteira (perfil incluído). Fica disponível para a exigência de
@@ -311,7 +237,7 @@ export async function zerarConta(uid) {
 export async function apagarConta(uid) {
   const snap = await getDoc(refUsuario(uid))
   const e164 = snap.exists() ? snap.get('telefoneE164') : null
-  await zerarConta(uid)
+  await apagarSubcolecoes(uid)
   await deleteDoc(refUsuario(uid))
   // Libera o número para que a pessoa consiga voltar ao clube depois.
   if (e164) await liberarTelefone(e164)

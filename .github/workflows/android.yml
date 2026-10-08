@@ -48,6 +48,14 @@ jobs:
       - name: Gerar o projeto Android
         run: npx cap add android
 
+      # A área da equipe lê QR Code pela câmera (getUserMedia dentro do
+      # WebView). O Capacitor pede a permissão em tempo de execução, mas só
+      # se ela estiver declarada no manifesto.
+      - name: Permissão de câmera
+        run: |
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.CAMERA" />#' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.CAMERA' android/app/src/main/AndroidManifest.xml || { echo "::error::Não consegui declarar a permissão CAMERA"; exit 1; }
+
       # Sem este arquivo o APK compila e abre, mas o login com Google não
       # funciona — é ele que liga o app ao projeto do Firebase. Vem do console
       # (Configurações do projeto → app Android) e fica guardado como secret,

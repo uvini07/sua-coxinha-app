@@ -8,6 +8,7 @@ import { Folha } from '../componentes/Folha.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { QRCode } from '../componentes/QRCode.jsx'
 import { CATEGORIAS_RECOMPENSA } from '../dados/clube.js'
+import { qrDoVoucher } from '../firebase/equipe.js'
 
 const foto = (a) => `${import.meta.env.BASE_URL}produtos/${a}`
 
@@ -196,7 +197,7 @@ const FILTROS_VOUCHER = [
 ]
 
 export function Vouchers() {
-  const { vouchers, usarVoucher } = useClube()
+  const { uid, vouchers } = useClube()
   const [filtro, setFiltro] = useState('disponivel')
   const [aberto, setAberto] = useState(null)
 
@@ -232,24 +233,22 @@ export function Vouchers() {
         {aberto && (
           <>
             <div className="voucher-qr">
-              <QRCode valor={aberto.codigo} tamanho={188} />
+              <QRCode valor={qrDoVoucher(uid, aberto.id)} tamanho={188} />
             </div>
             <div className="centro pilha g8">
               <strong className="t-h3 ouro-display">{aberto.codigo}</strong>
-              <span className="t-peq c-sutil">{aberto.validade} · unidade Cajamar</span>
+              <span className="t-peq c-sutil">{aberto.validade}</span>
             </div>
             {aberto.estado === 'disponivel' ? (
-              <Botao
-                onClick={() => {
-                  usarVoucher(aberto.id)
-                  setAberto(null)
-                }}
-              >
-                Marcar como utilizado
-              </Botao>
+              <div className="caixa caixa--nota">
+                <Icone nome="info" tamanho={17} cor="var(--ouro-500)" />
+                <span className="t-peq c-secundario cresce">
+                  Mostre este código no caixa. A baixa é feita pela equipe da loja na hora da entrega.
+                </span>
+              </div>
             ) : (
               <Botao estilo="superficie" desabilitado>
-                Voucher já utilizado
+                {aberto.estado === 'utilizado' ? 'Voucher já utilizado' : 'Voucher indisponível'}
               </Botao>
             )}
           </>

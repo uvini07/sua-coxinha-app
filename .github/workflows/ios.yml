@@ -45,6 +45,12 @@ jobs:
       - name: Gerar o projeto iOS
         run: npx cap add ios
 
+      # A área da equipe lê QR Code pela câmera. Sem este texto o iOS derruba
+      # o app na primeira tentativa de abrir a câmera.
+      - name: Permissão de câmera
+        run: |
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'A câmera lê o QR Code do cliente no caixa.'" ios/App/App/Info.plist
+
       # Liga o app ao projeto do Firebase. Sem ele o app compila e abre, mas o
       # login com Google falha.
       - name: Ligar ao Firebase

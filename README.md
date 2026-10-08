@@ -23,8 +23,9 @@ em zero e só ganha pontos quando uma compra é identificada.
 src/firebase/config.js         chaves do projeto (públicas por natureza)
 src/firebase/app.js            initializeApp, auth, db, analytics
 src/firebase/autenticacao.js   Google, Apple e a tradução dos erros do Firebase
-src/firebase/clube.js          leitura e escrita do Firestore
-firestore.rules                quem alcança o quê
+src/firebase/clube.js          carteira do cliente (perfil, extrato, resgate)
+src/firebase/equipe.js         equipe, caixa, livro de lançamentos, regras e lojas
+firestore.rules                quem alcança o quê (testado em testes/regras.test.mjs)
 ```
 
 **Coleções**
@@ -35,6 +36,11 @@ usuarios/{uid}/historico/{id}      extrato de pontos
 usuarios/{uid}/vouchers/{id}       recompensas resgatadas
 usuarios/{uid}/notificacoes/{id}   avisos do clube
 telefones/{e164}                   reserva do número → uid do dono
+equipe/{email}                     franqueado ou funcionário: loja, papel, acesso, meta
+lancamentos/{id}                   livro imutável: cada compra e cada voucher, quem e onde
+lojas/{id}                         unidades da rede
+config/regras                      pontos por real, teto por compra, metas da equipe
+config/catalogo                    preço em pontos de cada recompensa
 ```
 
 **Por que não existe login por SMS.** Cada verificação por SMS é cobrada por mensagem.
@@ -93,18 +99,20 @@ só aparece quando um cliente não consegue entrar.
 
 ## Antes de produção
 
-Três pendências conhecidas, as três fáceis de esquecer:
+Pendências conhecidas, fáceis de esquecer:
 
 1. **Licença da fonte Brown Beige.** A versão na guia de marca é gratuita só para uso
    pessoal; uso comercial exige comprar. Detalhes e alternativas em [FONTES.md](FONTES.md).
-2. **O cliente ainda credita os próprios pontos.** Enquanto não existe integração com o
-   PDV, o botão "Simular leitura no caixa" grava saldo direto do navegador — ou seja, quem
-   entende do assunto consegue se dar pontos. A correção está escrita e comentada no fim de
-   `firestore.rules`: quando a Cloud Function do caixa entrar, saldo e extrato passam a ser
-   escritos só pelo Admin SDK, e o cliente fica com leitura.
-3. **Notificações são lidas, nunca criadas.** O app lê `usuarios/{uid}/notificacoes` e
-   marca como lidas, mas ninguém escreve lá ainda. Quem vai criar é a mesma função do
-   servidor (pontos creditados, pontos a expirar, nova recompensa).
+2. **A equipe é confiável até certo ponto.** O cliente não consegue mais se dar pontos: só
+   a equipe credita, e as regras do Firestore conferem a conta contra `config/regras`. Mas
+   um funcionário ainda pode registrar uma compra que não existiu para um conhecido. As
+   regras impedem que ele credite a si mesmo, limitam o valor por compra e deixam tudo
+   assinado no livro `lancamentos`. Fechar de vez exige a integração com o PDV (Cloud
+   Functions, plano Blaze).
+3. **Missões não andam sozinhas.** O cliente não pode mais completar missão (seria pontos de
+   graça), e ninguém ainda calcula o progresso a partir das compras. Precisa de servidor.
+4. **Notificações só de compra.** O caixa deixa o aviso "+N pontos". Pontos a expirar,
+   aniversário e campanhas ainda não existem.
 
 ## O que já funciona
 
@@ -117,21 +125,48 @@ em outro celular traz o mesmo saldo.
 - Carteira com saldo, pendentes, a expirar, gráfico por mês e extrato filtrável
 - Missões com progresso e detalhe
 - Catálogo de recompensas, **resgate que debita o saldo** e gera voucher com código único
-- Vouchers com QR Code real, marcáveis como utilizados
+- Vouchers com QR Code real; a baixa é feita pela equipe no caixa
 - QR Code de identificação que **funciona offline**
 - Clube de benefícios por categoria, com parceiros travados por nível
 - Perfil, configurações, notificações e a trilha de níveis
 - Telas de conquista para resgate, pontos creditados e subida de nível
+- **Área da equipe** (abaixo): caixa, metas, ranking e painel do admin
 
-O botão **Simular leitura no caixa**, na tela do QR, credita pontos de uma compra de
-R$ 59,80 e avança a missão de sequência. É o gancho que a integração com o PDV
-(ou o app do operador) vai substituir — está isolado em `registrarCompra()`.
+## Equipe, caixa e painel
+
+Ninguém se inscreve como equipe. O **admin master** (o e-mail fixo em `EMAIL_ADMIN`, em
+`src/firebase/equipe.js`, e em `souAdmin()`, em `firestore.rules` — os dois têm de bater)
+cadastra os franqueados, e cada franqueado cadastra os funcionários da loja dele. O cadastro
+é só o e-mail do Google da pessoa: ela entra pelo mesmo botão "Entrar com Google" e o app a
+leva direto para `#/equipe`. Dali ela pode "ver o app como cliente" e voltar.
+
+| | Funcionário | Franqueado | Admin |
+|---|---|---|---|
+| Registrar compra (QR do cliente ou telefone + valor) | ✓ | ✓ | ✓ qualquer loja |
+| Validar voucher (QR do voucher) | ✓ | ✓ | ✓ qualquer loja |
+| Própria meta e ranking da loja | ✓ | ✓ | ✓ qualquer loja |
+| Movimento do dia | só o dele | a loja | todas |
+| Cadastrar e tirar acesso | — | funcionários da loja | todo mundo |
+| Regras de pontuação, catálogo, lojas | — | — | ✓ |
+
+A meta da equipe é configurável no painel: pontos por R$ vendido e pontos por voucher
+validado. O ranking da loja ordena por valor vendido.
+
+**Primeira vez (admin):** publique `firestore.rules` no console, entre com o e-mail do admin
+e siga o quadro "Primeiros passos": criar as lojas, salvar as regras, publicar o catálogo.
+Sem esses três documentos as regras do Firestore recusam compra e resgate.
+
+Os QR Codes: `pd:c:{uid}` identifica o cliente (fixo, funciona offline) e
+`pd:v:{uid}:{id}` aponta para um voucher. O leitor usa a câmera pelo navegador (jsQR), então
+funciona igual na web e no app; o workflow do Android declara a permissão `CAMERA` e o do iOS
+o `NSCameraUsageDescription`.
 
 ## Só celular, de propósito
 
 Não existe layout de desktop. No computador o app aparece centralizado numa moldura de
 440px, como apareceria no aparelho. Isso é decisão de produto: o app é usado na fila do
-caixa. O **painel administrativo** que o briefing pede é outro projeto, e esse sim é desktop.
+caixa. O painel administrativo também é mobile (área da equipe); relatórios pesados e
+exportação CSV/Excel, quando vierem, ficam melhor num painel desktop à parte.
 
 ## Marca
 
@@ -160,25 +195,25 @@ public/
   produtos/    fotos do cardápio real
   sw.js        service worker (offline)
 src/
-  dados/clube.js          catálogo, níveis, missões, parceiros — fonte única enquanto não há API
+  dados/clube.js          catálogo, níveis, missões, parceiros (preços e regras: ver config/ no Firestore)
   firebase/               autenticação e Firestore
   estado/ClubeProvider    traduz o Firebase na forma que as telas esperam
   rotas/useRota.js        roteador por hash
   componentes/            design system em React
-  telas/                  uma tela por rota
+  telas/                  uma tela por rota (Equipe.jsx: caixa, pessoas, regras, lojas)
   estilos/tokens.css      as variáveis do Figma viradas CSS
 ```
 
 ## Quando o PDV entrar
 
-As telas consomem `useClube()` e não sabem de onde vêm os dados: a troca acontece dentro de
-`src/firebase/clube.js`. O ponto de integração é `creditarCompra()` — hoje chamado pelo
-botão da tela do QR, amanhã por uma Cloud Function que o caixa dispara com o `uid` lido do
-QR Code (ou com o telefone informado no balcão).
+Hoje a equipe registra a compra à mão no celular (`registrarCompraNoCaixa()`, em
+`src/firebase/equipe.js`), e as regras do Firestore conferem cada lote. Com o PDV, uma Cloud
+Function passa a fazer o mesmo lote com o Admin SDK a partir da venda real — e o caminho de
+crédito pela equipe pode ser fechado em `firestore.rules`.
 
-A economia de pontos vive em `src/dados/clube.js` e é **demonstrativa**: 2 pontos por real,
-~20 pontos por R$ 1,00 de recompensa. O briefing manda que isso seja parametrizável no painel —
-os números reais saem da conta de margem, não daqui.
+As regras de pontuação vivem em `config/regras` (editável no painel); os preços das
+recompensas, em `config/catalogo`. Os números de `src/dados/clube.js` são só o ponto de
+partida que o painel oferece na primeira vez.
 
 ## Publicar
 

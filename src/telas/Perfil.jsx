@@ -5,7 +5,6 @@ import { AppBar, NavInferior, Tela } from '../componentes/Tela.jsx'
 import { BarraProgresso, Botao, Brilho, Divisor } from '../componentes/primitivos.jsx'
 import { SeloNivel } from '../componentes/SeloNivel.jsx'
 import { Icone } from '../componentes/Icone.jsx'
-import { UNIDADES } from '../dados/clube.js'
 
 function ItemMenu({ icone, rotulo, valor, onClick }) {
   return (
@@ -20,8 +19,8 @@ function ItemMenu({ icone, rotulo, valor, onClick }) {
 
 export function Perfil() {
   const { ir } = useRota()
-  const { usuario, nivel, vouchers, sair } = useClube()
-  const unidade = UNIDADES.find((u) => u.id === usuario.unidade) || UNIDADES[0]
+  const { usuario, nivel, vouchers, sair, papel, unidades } = useClube()
+  const unidade = unidades.find((u) => u.id === usuario.unidade) || unidades[0]
   const ativos = vouchers.filter((v) => v.estado === 'disponivel').length
 
   return (
@@ -77,6 +76,12 @@ export function Perfil() {
       </div>
 
       <section className="px mt24">
+        {papel && (
+          <>
+            <ItemMenu icone="cadeado" rotulo="Voltar para a área da equipe" onClick={() => ir('/equipe')} />
+            <Divisor recuo={32} />
+          </>
+        )}
         <ItemMenu icone="ticket" rotulo="Meus vouchers" valor={ativos ? String(ativos) : '—'} onClick={() => ir('/vouchers')} />
         <Divisor recuo={32} />
         <ItemMenu icone="carteira" rotulo="Extrato de pontos" onClick={() => ir('/historico')} />
@@ -115,7 +120,7 @@ function Interruptor({ ligado, onClick, rotulo }) {
 }
 
 export function Configuracoes() {
-  const { usuario, atualizarPerfil, reiniciar } = useClube()
+  const { usuario, atualizarPerfil, unidades } = useClube()
   const { ir } = useRota()
   const [avisos, setAvisos] = useState({ app: true, whatsapp: true, email: false, ofertas: true })
 
@@ -131,7 +136,7 @@ export function Configuracoes() {
           <label className="campo__caixa">
             <Icone nome="pin" tamanho={19} cor="var(--ouro-500)" />
             <select value={usuario.unidade} onChange={(e) => atualizarPerfil({ unidade: e.target.value })}>
-              {UNIDADES.map((u) => (
+              {unidades.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.nome} · {u.bairro}
                 </option>
@@ -183,19 +188,9 @@ export function Configuracoes() {
           <Icone nome="info" tamanho={17} cor="var(--texto-sutil)" />
           <span className="t-peq c-sutil cresce">
             Seus dados ficam na sua conta do clube, não no aparelho — você entra em qualquer celular e encontra o
-            mesmo saldo. Reiniciar apaga saldo, vouchers e histórico desta conta, sem desfazer.
+            mesmo saldo.
           </span>
         </div>
-        <Botao
-          estilo="superficie"
-          tamanho="p"
-          onClick={async () => {
-            await reiniciar()
-            ir('/home', { substituir: true })
-          }}
-        >
-          Zerar minha conta
-        </Botao>
         <span className="t-peq c-sutil centro">Pontos Dourados · versão 0.1.0</span>
       </div>
     </Tela>

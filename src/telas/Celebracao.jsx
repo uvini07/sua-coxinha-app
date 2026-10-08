@@ -6,6 +6,7 @@ import { SeloNivel } from '../componentes/SeloNivel.jsx'
 import { Gota } from '../componentes/Gota.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { QRCode } from '../componentes/QRCode.jsx'
+import { qrDoVoucher } from '../firebase/equipe.js'
 
 // Os momentos de conquista. É aqui que o dourado aparece no volume máximo —
 // justamente porque o resto do app é preto.
@@ -23,7 +24,7 @@ function Palco({ children }) {
 
 export function Celebracao({ tipo, params }) {
   const { ir } = useRota()
-  const { vouchers, nivel, usuario } = useClube()
+  const { uid, vouchers, nivel, usuario } = useClube()
 
   if (tipo === 'resgate') {
     const voucher = vouchers.find((v) => v.id === params.voucher) || vouchers[0]
@@ -50,11 +51,11 @@ export function Celebracao({ tipo, params }) {
               <span className="t-peq" style={{ color: '#5C5C5C' }}>
                 {voucher.descricao} · {voucher.pontos} pontos
               </span>
-              <QRCode valor={voucher.codigo} tamanho={168} />
+              <QRCode valor={qrDoVoucher(uid, voucher.id)} tamanho={168} />
               <span className="cupom__codigo ouro-display">{voucher.codigo}</span>
               <i className="cupom__linha" />
               <span className="t-peq" style={{ color: '#5C5C5C' }}>
-                {voucher.validade} · unidade Cajamar
+                {voucher.validade}
               </span>
             </div>
           )}

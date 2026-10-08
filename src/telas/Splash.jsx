@@ -6,7 +6,7 @@ import { Gota } from '../componentes/Gota.jsx'
 
 export function Splash() {
   const { ir } = useRota()
-  const { autenticado, carregando, cadastroCompleto, onboardingVisto } = useClube()
+  const { autenticado, carregando, cadastroCompleto, onboardingVisto, papel } = useClube()
 
   // A splash espera duas coisas: a animação terminar e o Firebase responder se
   // existe sessão. Quem demorar mais manda — por isso o efeito reage a
@@ -16,11 +16,12 @@ export function Splash() {
     const t = setTimeout(() => {
       if (!onboardingVisto) ir('/onboarding', { substituir: true })
       else if (!autenticado) ir('/entrar', { substituir: true })
+      else if (papel) ir('/equipe', { substituir: true })
       else if (!cadastroCompleto) ir('/cadastro', { substituir: true })
       else ir('/home', { substituir: true })
     }, 1700)
     return () => clearTimeout(t)
-  }, [autenticado, carregando, cadastroCompleto, onboardingVisto, ir])
+  }, [autenticado, carregando, cadastroCompleto, onboardingVisto, papel, ir])
 
   return (
     <div className="tela splash">

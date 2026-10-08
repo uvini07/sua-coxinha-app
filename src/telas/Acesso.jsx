@@ -5,7 +5,6 @@ import { Botao, Brilho } from '../componentes/primitivos.jsx'
 import { AppBar, Tela } from '../componentes/Tela.jsx'
 import { LOGIN_APPLE } from '../firebase/config.js'
 import { Icone } from '../componentes/Icone.jsx'
-import { UNIDADES } from '../dados/clube.js'
 
 // Máscara de telefone brasileiro, só com os dígitos que o usuário digitou.
 function mascararTelefone(bruto) {
@@ -77,7 +76,7 @@ export function Entrar() {
 
 export function Cadastro() {
   const { ir } = useRota()
-  const { usuario, concluirCadastro, erro, ocupado } = useClube()
+  const { usuario, concluirCadastro, erro, ocupado, unidades } = useClube()
   const [nome, setNome] = useState(usuario.nome)
   const [telefone, setTelefone] = useState(usuario.telefone)
   const [nascimento, setNascimento] = useState(usuario.nascimento)
@@ -156,7 +155,7 @@ export function Cadastro() {
           <label className="campo__caixa">
             <Icone nome="pin" tamanho={19} cor="var(--ouro-500)" />
             <select value={unidade} onChange={(e) => setUnidade(e.target.value)}>
-              {UNIDADES.map((u) => (
+              {unidades.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.nome} · {u.bairro}
                 </option>

@@ -52,8 +52,17 @@ existe link de download para iPhone, porque a Apple exige certificado de conta p
 qualquer app rodar num aparelho. Com a conta, o caminho é TestFlight e o workflow ganha
 os passos de assinatura.
 
-**Para o login funcionar nos builds**, cadastre três secrets do repositório
-(Settings → Secrets and variables → Actions):
+**Para o login funcionar nos builds**, os arquivos do Firebase precisam chegar até o
+servidor que compila. Há dois caminhos, e o mais simples é o primeiro:
+
+1. **Guardar no repositório**, em `firebase/` — veja [firebase/LEIA-ME.md](firebase/LEIA-ME.md).
+   Não são credenciais secretas: viajam dentro de cada app publicado.
+2. **Guardar como secret**, se preferir não versionar. O secret tem prioridade sobre o
+   arquivo.
+
+A chave de assinatura é diferente: essa **só** como secret, nunca no repositório.
+
+Os secrets, se optar por eles (Settings → Secrets and variables → Actions):
 
 | Secret | De onde vem | Sem ele |
 |---|---|---|

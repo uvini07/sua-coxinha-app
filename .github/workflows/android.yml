@@ -56,11 +56,20 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
+          # Dois caminhos, porque guardar o arquivo no repositório é mais
+          # simples para quem não lida com secrets todo dia — e este arquivo
+          # não é segredo: ele viaja dentro de cada APK publicado, de onde
+          # qualquer um extrai. Quem protege os dados são as regras do
+          # Firestore. O secret tem prioridade, para dar como sobrescrever sem
+          # mexer no repositório.
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-            echo "google-services.json aplicado — login com Google ativo."
+            echo "google-services.json veio do secret — login com Google ativo."
+          elif [ -f firebase/google-services.json ]; then
+            cp firebase/google-services.json android/app/google-services.json
+            echo "google-services.json veio do repositório — login com Google ativo."
           else
-            echo "::warning::Secret GOOGLE_SERVICES_JSON ausente. O APK abre, mas o login com Google vai falhar."
+            echo "::warning::Nenhum google-services.json (nem secret, nem firebase/google-services.json). O APK abre, mas o login com Google vai falhar."
           fi
 
       # A chave que assina o APK decide a SHA-1 que o Google exige ver

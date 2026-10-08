@@ -51,11 +51,17 @@ jobs:
         env:
           GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
         run: |
+          # Igual ao Android: secret tem prioridade, e o arquivo no repositório
+          # serve de alternativa. Veja firebase/LEIA-ME.md sobre por que isto
+          # pode ficar versionado.
           if [ -n "$GOOGLE_SERVICE_INFO_PLIST" ]; then
             printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" > ios/App/App/GoogleService-Info.plist
-            echo "GoogleService-Info.plist aplicado."
+            echo "GoogleService-Info.plist veio do secret."
+          elif [ -f firebase/GoogleService-Info.plist ]; then
+            cp firebase/GoogleService-Info.plist ios/App/App/GoogleService-Info.plist
+            echo "GoogleService-Info.plist veio do repositório."
           else
-            echo "::warning::Secret GOOGLE_SERVICE_INFO_PLIST ausente. Compila, mas o login com Google vai falhar."
+            echo "::warning::Nenhum GoogleService-Info.plist (nem secret, nem firebase/GoogleService-Info.plist). Compila, mas o login com Google vai falhar."
           fi
 
       - name: Sincronizar web → nativo

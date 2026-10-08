@@ -16,7 +16,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write # cria a Release onde o APK fica baixável sem login
 
 jobs:
   apk:
@@ -70,10 +70,48 @@ jobs:
         run: ./gradlew assembleDebug --no-daemon
         working-directory: android
 
-      - name: Publicar o APK
+      # Nome fixo, para o link de download nunca mudar.
+      - name: Renomear
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk pontos-dourados.apk
+
+      # Artifact do Actions exige login no GitHub e entrega um .zip — e o
+      # Android não instala APK de dentro de zip. Serve para guardar histórico,
+      # não para instalar no celular.
+      - name: Guardar no histórico da execução
         uses: actions/upload-artifact@v4
         with:
           name: pontos-dourados-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: pontos-dourados.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Este é o caminho que funciona no celular: a Release serve o .apk puro,
+      # por link direto, sem exigir conta no GitHub. Abre no navegador do
+      # telefone e instala.
+      #
+      # A tag é fixa e vai sendo sobrescrita: assim o link de download é sempre
+      # o mesmo, e a última compilação do main está sempre nele.
+      - name: Publicar para download no celular
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notas="Build automático de $(date -u '+%d/%m/%Y %H:%M') UTC, do commit ${GITHUB_SHA:0:7}.
+
+          **Como instalar:** abra este link no navegador do celular Android, baixe o
+          \`pontos-dourados.apk\` e toque no arquivo. O Android vai pedir para autorizar
+          instalação de fonte desconhecida — é normal em app fora da Play Store.
+
+          APK de teste, assinado com a chave de depuração. Não é a versão da loja.
+
+          Para iPhone não há equivalente: a Apple exige conta de desenvolvedor paga para
+          instalar em aparelho. No iOS, use o app pelo navegador (Safari → Compartilhar →
+          Adicionar à Tela de Início)."
+
+          gh release delete apk-teste --yes --cleanup-tag 2>/dev/null || true
+          gh release create apk-teste pontos-dourados.apk \
+            --title "APK de teste — última versão" \
+            --notes "$notas" \
+            --prerelease
+          echo "### APK pronto para o celular" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-teste/pontos-dourados.apk" >> "$GITHUB_STEP_SUMMARY" 

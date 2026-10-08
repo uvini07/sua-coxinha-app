@@ -1,0 +1,79 @@
+# Compila o APK de teste do Android na nuvem.
+#
+# Existe porque montar o ambiente Android na mão (SDK, Android Studio, Gradle)
+# é a parte mais chata de publicar um app — e para instalar no celular e testar
+# não é preciso nada disso. O APK sai como anexo da execução, em Actions.
+#
+# O que ele NÃO faz: APK assinado para a Play Store. Isto é build de depuração,
+# para instalar no aparelho e testar. A versão da loja é assinada com a chave da
+# conta, que não entra em repositório.
+
+name: APK de teste (Android)
+
+on:
+  workflow_dispatch: # botão "Run workflow" na aba Actions
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Gerar APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # O Gradle do Android precisa de JDK 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do app web
+        run: npm run build
+
+      # android/ não entra no repositório: é gerado a partir do
+      # capacitor.config.json, igual em qualquer máquina.
+      - name: Gerar o projeto Android
+        run: npx cap add android
+
+      # Sem este arquivo o APK compila e abre, mas o login com Google não
+      # funciona — é ele que liga o app ao projeto do Firebase. Vem do console
+      # (Configurações do projeto → app Android) e fica guardado como secret,
+      # porque aponta para o projeto de produção.
+      - name: Ligar ao Firebase
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "google-services.json aplicado — login com Google ativo."
+          else
+            echo "::warning::Secret GOOGLE_SERVICES_JSON ausente. O APK abre, mas o login com Google vai falhar."
+          fi
+
+      - name: Sincronizar web → nativo
+        run: npx cap sync android
+
+      - name: Compilar
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: android
+
+      - name: Publicar o APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pontos-dourados-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30

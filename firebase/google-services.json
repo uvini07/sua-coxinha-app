@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "132936922966-2oiub1h6c9ct1f5ft2qg72bti4fpteu7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "br.com.suacoxinha.pontosdourados",
+            "certificate_hash": "071a75810cbf3f3a139fae24c96118a4fba50c10"
+          }
+        },
+        {
           "client_id": "132936922966-inpb89lhpr6jjr5lfpnuopttdmbe4g16.apps.googleusercontent.com",
           "client_type": 3
         }

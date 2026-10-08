@@ -27,6 +27,39 @@ O resto do código não percebe diferença: a sessão é a mesma do `firebase/au
 O `sairDaConta()` encerra os dois lados. Se encerrasse só um, o login seguinte entraria
 sozinho na conta anterior, sem passar pelo seletor.
 
+## Baixar o app pronto, sem instalar nada
+
+O repositório compila sozinho no GitHub Actions. Não é preciso ter Android Studio,
+Xcode nem Mac para ter o APK na mão.
+
+**Android — instala no celular, direto:**
+
+```
+https://github.com/uvini07/sua-coxinha-app/releases/download/apk-teste/pontos-dourados.apk
+```
+
+Abra no navegador do Android, baixe e toque no arquivo. O link não muda: cada build do
+`main` sobrescreve o arquivo, então ele sempre serve a última versão.
+
+> O anexo da execução (Actions → Artifacts) **não** serve para instalar no celular:
+> exige conta no GitHub e entrega um `.zip`, e o Android não instala APK de dentro de
+> zip. Ele fica só como histórico.
+
+**iOS — compila, mas não instala.** O workflow `ios.yml` roda sob demanda (Actions →
+Build iOS → Run workflow) e prova que o código compila, pegando erro de Swift, de plugin
+nativo ou de SPM sem precisar de um Mac. O resultado é um build de **simulador**: não
+existe link de download para iPhone, porque a Apple exige certificado de conta paga para
+qualquer app rodar num aparelho. Com a conta, o caminho é TestFlight e o workflow ganha
+os passos de assinatura.
+
+**Para o login funcionar nos builds**, cadastre os arquivos do Firebase como secrets do
+repositório (Settings → Secrets and variables → Actions):
+
+| Secret | De onde vem | Sem ele |
+|---|---|---|
+| `GOOGLE_SERVICES_JSON` | Firebase → app Android | o APK abre, o login falha |
+| `GOOGLE_SERVICE_INFO_PLIST` | Firebase → app iOS | compila, o login falha |
+
 ## O que você precisa antes de começar
 
 | | Android | iOS |

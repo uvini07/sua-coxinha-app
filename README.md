@@ -203,6 +203,12 @@ embutida. No nativo quem abre o seletor de contas é o plugin
 `@capacitor-firebase/authentication`, e a credencial vira sessão do `firebase/auth` pelo
 `signInWithCredential`. Os dois caminhos convivem em `src/firebase/autenticacao.js`.
 
+O repositório também compila sozinho: todo push no `main` gera um APK instalável, baixável
+sem login em
+[releases/download/apk-teste/pontos-dourados.apk](https://github.com/uvini07/sua-coxinha-app/releases/download/apk-teste/pontos-dourados.apk).
+O build de iOS roda sob demanda e serve para provar que o código compila — a Apple não
+deixa instalar em aparelho sem conta paga.
+
 O passo a passo completo — `google-services.json`, as duas SHA-1 do Android, o esquema de
 URL do iOS, Entrar com Apple — está em **[APP-NATIVO.md](APP-NATIVO.md)**.
 

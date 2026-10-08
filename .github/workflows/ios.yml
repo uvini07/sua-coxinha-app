@@ -1,0 +1,92 @@
+# Compila o app iOS na nuvem, num runner macOS do GitHub.
+#
+# O QUE ESTE WORKFLOW ENTREGA: a prova de que o código compila no iOS, e um
+# build de simulador. Serve para pegar erro de iOS (pod, plugin nativo, Swift)
+# sem ter um Mac.
+#
+# O QUE ELE NÃO ENTREGA: um app instalável no iPhone. A Apple exige que todo
+# app instalado num aparelho esteja assinado com um certificado de uma conta
+# Apple Developer paga. Não existe caminho honesto em volta disso — nem aqui,
+# nem num Mac próprio. Com a conta, o caminho vira TestFlight, e este arquivo
+# ganha os passos de assinatura.
+#
+# Runner macOS é caro em repositório privado (conta 10x os minutos). Aqui o
+# repositório é público, então não custa minutos. Por isso ele roda só sob
+# demanda, e não a cada push.
+
+name: Build iOS (simulador)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: Compilar para simulador
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do app web
+        run: npm run build
+
+      # ios/ não entra no repositório: é gerado a partir do capacitor.config.json.
+      - name: Gerar o projeto iOS
+        run: npx cap add ios
+
+      # Liga o app ao projeto do Firebase. Sem ele o app compila e abre, mas o
+      # login com Google falha.
+      - name: Ligar ao Firebase
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+        run: |
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST" ]; then
+            printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" > ios/App/App/GoogleService-Info.plist
+            echo "GoogleService-Info.plist aplicado."
+          else
+            echo "::warning::Secret GOOGLE_SERVICE_INFO_PLIST ausente. Compila, mas o login com Google vai falhar."
+          fi
+
+      - name: Sincronizar web → nativo
+        run: npx cap sync ios
+
+      - name: Instalar os pods
+        run: pod install
+        working-directory: ios/App
+
+      # CODE_SIGNING_ALLOWED=NO é o que permite compilar sem conta Apple. É
+      # também o motivo de o resultado só rodar em simulador.
+      - name: Compilar
+        working-directory: ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Empacotar o resultado
+        working-directory: ios/App/build/Build/Products/Debug-iphonesimulator
+        run: zip -r "$GITHUB_WORKSPACE/App-simulador.zip" App.app
+
+      - name: Publicar o build
+        uses: actions/upload-artifact@v4
+        with:
+          name: pontos-dourados-ios-simulador
+          path: App-simulador.zip
+          if-no-files-found: error
+          retention-days: 30

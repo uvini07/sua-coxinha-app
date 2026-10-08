@@ -30,12 +30,17 @@ service cloud.firestore {
       // Conta nova nasce zerada. Esta é a regra do produto, escrita onde o
       // cliente não consegue burlar: nem com o app alterado dá para criar um
       // documento já com pontos.
+      // `get(campo, -1)` em vez de `data.campo`: ler um campo que não existe
+      // é erro de avaliação nas regras do Firestore, e erro de avaliação nega
+      // a operação por um motivo que não aparece em lugar nenhum. Com o padrão
+      // -1, um documento criado sem o contador é recusado limpamente — que é o
+      // que queremos de qualquer jeito: os cinco têm de estar lá, em zero.
       function nasceZerada() {
-        return request.resource.data.saldo == 0
-            && request.resource.data.acumulado == 0
-            && request.resource.data.pendentes == 0
-            && request.resource.data.aExpirar == 0
-            && request.resource.data.resgates == 0;
+        return request.resource.data.get('saldo', -1) == 0
+            && request.resource.data.get('acumulado', -1) == 0
+            && request.resource.data.get('pendentes', -1) == 0
+            && request.resource.data.get('aExpirar', -1) == 0
+            && request.resource.data.get('resgates', -1) == 0;
       }
 
       allow get: if meu();

@@ -17,6 +17,11 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# artefatos do emulador do Firebase
+firestore-debug.log
+firebase-debug.log
+.firebase/
+
 .vscode/*
 !.vscode/extensions.json
 .idea/

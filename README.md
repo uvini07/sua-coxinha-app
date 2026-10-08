@@ -57,6 +57,21 @@ outra, e dois toques no botão de resgate não geram dois vouchers com o saldo d
 Para apontar o app para outro projeto (staging), copie `.env.example` para `.env.local` e
 preencha as variáveis `VITE_FIREBASE_*`; elas têm prioridade sobre os valores padrão.
 
+**Testar as regras antes de publicar**
+
+```bash
+npm run testar:regras
+```
+
+Sobe o emulador do Firestore e roda `testes/regras.test.mjs`: as 24 operações que o app
+realmente faz (criar conta, creditar compra com `increment`, resgatar dentro de uma
+transação, listar as subcoleções ordenadas) mais as que precisam ser recusadas — ler a
+carteira alheia, criar conta já com pontos, escrever numa coleção fora do previsto. É um
+comando só, não precisa de credencial e não toca no projeto de verdade.
+
+Vale a pena rodar antes de cada `firebase deploy --only firestore:rules`: regra quebrada
+só aparece quando um cliente não consegue entrar.
+
 ## Antes de produção
 
 Três pendências conhecidas, as três fáceis de esquecer:

@@ -99,6 +99,25 @@ await teste('apaga os próprios lançamentos', async () => {
 await teste('apaga a própria conta', () => assertSucceeds(deleteDoc(doc(meu, 'usuarios', EU))))
 await teste('RECUSA apagar conta alheia', () => assertFails(deleteDoc(doc(alheio, 'usuarios', OUTRO + 'x'))))
 
+console.log('\n== reserva de telefone ==')
+const NUM = '+5511971813986'
+await teste('reserva um número livre', () =>
+  assertSucceeds(setDoc(doc(meu, 'telefones', NUM), { uid: EU, criadoEm: serverTimestamp() })))
+await teste('RECUSA tomar número já reservado', () =>
+  assertFails(setDoc(doc(alheio, 'telefones', NUM), { uid: OUTRO, criadoEm: serverTimestamp() })))
+await teste('RECUSA reservar apontando para outro uid', () =>
+  assertFails(setDoc(doc(meu, 'telefones', '+5511900000001'), { uid: OUTRO })))
+await teste('RECUSA reservar sem login', () =>
+  assertFails(setDoc(doc(anonimo, 'telefones', '+5511900000002'), { uid: 'x' })))
+await teste('RECUSA ler a reserva (não dá para sondar quem está no clube)', () =>
+  assertFails(getDoc(doc(alheio, 'telefones', NUM))))
+await teste('RECUSA liberar número de outro', () =>
+  assertFails(deleteDoc(doc(alheio, 'telefones', NUM))))
+await teste('libera o próprio número', () =>
+  assertSucceeds(deleteDoc(doc(meu, 'telefones', NUM))))
+await teste('número liberado pode ser reivindicado por outro', () =>
+  assertSucceeds(setDoc(doc(alheio, 'telefones', NUM), { uid: OUTRO, criadoEm: serverTimestamp() })))
+
 console.log('\n== fora do previsto ==')
 await teste('RECUSA qualquer outra coleção', () =>
   assertFails(setDoc(doc(meu, 'config', 'global'), { x: 1 })))

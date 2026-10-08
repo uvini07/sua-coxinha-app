@@ -6,6 +6,7 @@
 //   usuarios/{uid}/historico/{id}      extrato de pontos
 //   usuarios/{uid}/vouchers/{id}       recompensas resgatadas
 //   usuarios/{uid}/notificacoes/{id}   avisos do clube
+//   telefones/{e164}                   reserva do número → uid do dono
 //
 // Saldo é dinheiro: toda escrita que mexe em pontos passa por uma transação,
 // para que duas abas abertas (ou o caixa e o app ao mesmo tempo) não gravem
@@ -16,6 +17,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   increment,
   limit,
@@ -24,6 +26,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore'
@@ -126,6 +129,34 @@ export function observarColecao(uid, nome, aoMudar, aoFalhar, quantidade = 200) 
     (snap) => aoMudar(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     aoFalhar,
   )
+}
+
+// RESERVA DO TELEFONE
+//
+// Sem login por SMS, nada impede duas pessoas de digitarem o mesmo número — e
+// como o caixa identifica o cliente pelo telefone, número repetido credita
+// ponto na conta errada. A unicidade passa a vir daqui: `telefones/{e164}` é
+// um documento por número, e a regra do Firestore só deixa criar o que ainda
+// não existe. O primeiro que reivindica fica com ele.
+//
+// Não dá para "perguntar antes" se o número está livre: ler a coleção deixaria
+// qualquer cliente logado descobrir quais telefones estão no clube. Então a
+// tentativa de escrita é a própria checagem, e a recusa vira 'telefone-em-uso'.
+export async function reservarTelefone(uid, e164) {
+  try {
+    await setDoc(doc(db, 'telefones', e164), { uid, criadoEm: serverTimestamp() })
+  } catch (erro) {
+    if (erro.code === 'permission-denied') {
+      const meu = new Error('telefone-em-uso')
+      meu.code = 'telefone-em-uso'
+      throw meu
+    }
+    throw erro
+  }
+}
+
+export function liberarTelefone(e164) {
+  return deleteDoc(doc(db, 'telefones', e164))
 }
 
 export function salvarPerfil(uid, campos) {
@@ -278,8 +309,12 @@ export async function zerarConta(uid) {
 // Apaga a conta inteira (perfil incluído). Fica disponível para a exigência de
 // exclusão de dados da LGPD e das lojas de aplicativo.
 export async function apagarConta(uid) {
+  const snap = await getDoc(refUsuario(uid))
+  const e164 = snap.exists() ? snap.get('telefoneE164') : null
   await zerarConta(uid)
   await deleteDoc(refUsuario(uid))
+  // Libera o número para que a pessoa consiga voltar ao clube depois.
+  if (e164) await liberarTelefone(e164)
 }
 
 export { codigoDoCliente, telefoneLegivel }

@@ -20,3 +20,9 @@ export const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID || '1:132936922966:web:c9e8685a094b8715a908f7',
   measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || 'G-3QD746LZ4E',
 }
+
+// Entrar com Apple exige conta paga no Apple Developer (US$ 99/ano) e a
+// configuração do provedor no console do Firebase. Enquanto isso não estiver
+// pronto o botão fica escondido — mostrar um botão que só devolve erro é pior
+// do que não ter o botão. Ligue com VITE_LOGIN_APPLE=true quando configurar.
+export const LOGIN_APPLE = env.VITE_LOGIN_APPLE === 'true'

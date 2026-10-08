@@ -1,16 +1,19 @@
-// AUTENTICAÇÃO — Google e telefone (SMS)
+// AUTENTICAÇÃO — Google e Apple
 //
-// Os dois provedores já estão habilitados no console do Firebase. Aqui mora só
-// o que o app precisa: entrar, confirmar código, sair, e traduzir os erros do
-// Firebase para frases que um cliente entende.
+// Não há login por SMS: cada verificação por SMS é cobrada por mensagem, e com
+// o clube no tamanho projetado isso seria quase toda a conta do Firebase.
+// Google e Apple não têm custo por uso.
+//
+// O telefone continua existindo — é por ele que o caixa identifica o cliente —
+// mas como campo do cadastro, conferido no balcão na primeira compra. Quem
+// garante que ninguém tome o número de outro é a coleção `telefones` com a
+// regra em firestore.rules, não o SMS.
 
 import {
   GoogleAuthProvider,
-  RecaptchaVerifier,
+  OAuthProvider,
   getRedirectResult,
   onAuthStateChanged,
-  signInWithCredential,
-  signInWithPhoneNumber,
   signInWithPopup,
   signInWithRedirect,
   signOut,
@@ -22,6 +25,12 @@ const google = new GoogleAuthProvider()
 // sem perceber é pior do que um toque a mais.
 google.setCustomParameters({ prompt: 'select_account' })
 
+const apple = new OAuthProvider('apple.com')
+apple.addScope('email')
+apple.addScope('name')
+
+const PROVEDORES = { google, apple }
+
 export function observarSessao(aoMudar) {
   return onAuthStateChanged(auth, aoMudar)
 }
@@ -31,13 +40,16 @@ export function observarSessao(aoMudar) {
 const semPopup = () =>
   window.location.protocol === 'capacitor:' || /\bwv\b|Capacitor/i.test(navigator.userAgent)
 
-export async function entrarComGoogle() {
+async function entrarCom(nome) {
+  const provedor = PROVEDORES[nome]
+  if (!provedor) throw new Error(`provedor desconhecido: ${nome}`)
+
   if (semPopup()) {
-    await signInWithRedirect(auth, google)
+    await signInWithRedirect(auth, provedor)
     return null
   }
   try {
-    const { user } = await signInWithPopup(auth, google)
+    const { user } = await signInWithPopup(auth, provedor)
     return user
   } catch (erro) {
     // Popup bloqueado pelo navegador: tenta o caminho do redirect.
@@ -45,12 +57,15 @@ export async function entrarComGoogle() {
       erro.code === 'auth/popup-blocked' ||
       erro.code === 'auth/operation-not-supported-in-this-environment'
     ) {
-      await signInWithRedirect(auth, google)
+      await signInWithRedirect(auth, provedor)
       return null
     }
     throw erro
   }
 }
+
+export const entrarComGoogle = () => entrarCom('google')
+export const entrarComApple = () => entrarCom('apple')
 
 // Chamado uma vez na subida do app, para fechar um login por redirect que
 // começou antes de o app ser recarregado.
@@ -63,36 +78,12 @@ export async function concluirRedirecionamento() {
   }
 }
 
-// ---- Telefone -------------------------------------------------------------
-
-let verificador = null
-
-// O reCAPTCHA invisível precisa de um elemento no DOM. Criamos um só, fora das
-// telas, para que ele sobreviva à navegação entre /entrar e /codigo.
-function obterVerificador() {
-  if (verificador) return verificador
-  let alvo = document.getElementById('recaptcha-telefone')
-  if (!alvo) {
-    alvo = document.createElement('div')
-    alvo.id = 'recaptcha-telefone'
-    document.body.appendChild(alvo)
-  }
-  verificador = new RecaptchaVerifier(auth, alvo, { size: 'invisible' })
-  return verificador
+export function sairDaConta() {
+  return signOut(auth)
 }
 
-// Depois de um envio com erro o widget fica "gasto" e o próximo envio falha.
-export function limparVerificador() {
-  try {
-    verificador?.clear()
-  } catch {
-    /* já estava limpo */
-  }
-  verificador = null
-}
-
-// Aceita o telefone como o usuário digitou e devolve no formato E.164 que o
-// Firebase exige. Sem código de país, assume Brasil.
+// Aceita o telefone como o cliente digitou e devolve em E.164, que é o formato
+// que serve de chave na coleção `telefones`. Sem código de país, assume Brasil.
 export function paraE164(bruto) {
   const d = String(bruto).replace(/\D/g, '')
   if (!d) return ''
@@ -100,56 +91,24 @@ export function paraE164(bruto) {
   return `+55${d}`
 }
 
-// Devolve o `confirmationResult` do Firebase, que é quem sabe confirmar o
-// código. Guardamos ele em memória no provider — não dá para serializar.
-export async function enviarCodigo(telefone) {
-  try {
-    return await signInWithPhoneNumber(auth, paraE164(telefone), obterVerificador())
-  } catch (erro) {
-    limparVerificador()
-    throw erro
-  }
-}
-
-export async function confirmarCodigo(confirmacao, codigo) {
-  const { user } = await confirmacao.confirm(codigo)
-  limparVerificador()
-  return user
-}
-
-// Caminho alternativo: quando o SMS é lido pelo próprio aparelho (Android) e o
-// app recebe só a credencial.
-export async function entrarComCredencial(credencial) {
-  const { user } = await signInWithCredential(auth, credencial)
-  return user
-}
-
-export function sairDaConta() {
-  limparVerificador()
-  return signOut(auth)
-}
-
 // ---- Erros ----------------------------------------------------------------
 
 const MENSAGENS = {
-  'auth/invalid-phone-number': 'Esse número não parece válido. Confira o DDD e tente de novo.',
-  'auth/missing-phone-number': 'Digite seu telefone para continuar.',
-  'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos e tente novamente.',
-  'auth/quota-exceeded': 'O limite de envios de hoje acabou. Tente mais tarde.',
-  'auth/invalid-verification-code': 'Código incorreto. Confira os números do SMS.',
-  'auth/code-expired': 'O código expirou. Peça um novo.',
-  'auth/popup-closed-by-user': 'A janela do Google foi fechada antes de concluir.',
-  'auth/cancelled-popup-request': 'A janela do Google foi fechada antes de concluir.',
+  'auth/popup-closed-by-user': 'A janela de login foi fechada antes de concluir.',
+  'auth/cancelled-popup-request': 'A janela de login foi fechada antes de concluir.',
   'auth/account-exists-with-different-credential':
-    'Esse e-mail já entrou no clube por outro caminho. Use o telefone cadastrado.',
+    'Esse e-mail já entrou no clube por outro caminho. Use o mesmo botão da primeira vez.',
   'auth/network-request-failed': 'Sem conexão. Verifique a internet e tente de novo.',
-  'auth/unauthorized-domain': 'Este endereço não está liberado no Firebase (Authentication → Domínios autorizados).',
+  'auth/unauthorized-domain':
+    'Este endereço não está liberado no Firebase (Authentication → Domínios autorizados).',
   'auth/operation-not-allowed': 'Esse método de login não está habilitado no Firebase.',
+  'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos e tente novamente.',
   'permission-denied': 'Sem permissão para ler seus dados. Confira as regras do Firestore.',
+  'telefone-em-uso': 'Esse telefone já está em uso por outra conta do clube.',
   unavailable: 'Sem conexão com o servidor. Seus dados aparecem assim que a internet voltar.',
 }
 
 export function mensagemDeErro(erro) {
   if (!erro) return ''
-  return MENSAGENS[erro.code] || 'Não deu certo agora. Tente de novo em instantes.'
+  return MENSAGENS[erro.code] || MENSAGENS[erro.message] || 'Não deu certo agora. Tente de novo em instantes.'
 }

@@ -185,24 +185,24 @@
 
 /* ---------- Acesso ---------- */
 
+/* Coluna de altura cheia: com poucos elementos (hoje é um botão, dois quando
+   o Apple entrar) o conteúdo subia e deixava meia tela vazia. O rodapé legal
+   desce para o fim e a tela fica equilibrada com um botão ou com dois. */
 .acesso__conteudo {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   padding-bottom: var(--e32);
+}
+.acesso__rodape {
+  margin-top: auto;
+  padding-top: var(--e32);
 }
 .acesso__logo {
   width: 150px;
   margin-top: var(--e24);
-}
-.acesso__ou {
-  display: flex;
-  align-items: center;
-  gap: var(--e12);
-}
-.acesso__ou i {
-  flex: 1;
-  height: 1px;
-  background: var(--borda-sutil);
 }
 .acesso__prova {
   display: inline-flex;
@@ -213,44 +213,6 @@
   padding: 9px var(--e16);
   border-radius: var(--raio-pill);
   background: var(--fundo-elevado);
-}
-
-/* Seis casas (o SMS do Firebase tem 6 dígitos) na largura de um celular:
-   o gap menor e o min-width: 0 impedem que a linha estoure. */
-.codigo__campos {
-  display: flex;
-  gap: var(--e8);
-}
-.codigo__caixa {
-  flex: 1;
-  min-width: 0;
-  height: 68px;
-  text-align: center;
-  font-family: var(--fonte-ouro);
-  font-size: 30px;
-  border-radius: var(--raio-md);
-  background: var(--fundo-superficie);
-  border: 1px solid var(--borda-sutil);
-  color: var(--texto-primario);
-  outline: none;
-}
-.codigo__caixa:focus {
-  border-color: var(--borda-ouro);
-  border-width: 1.5px;
-}
-.codigo__caixa--cheia {
-  border-color: var(--borda-media);
-}
-
-/* O "reenviar" é um botão de verdade, mas tem a cara de um texto auxiliar. */
-.acesso__reenviar {
-  background: none;
-  border: 0;
-  width: 100%;
-  text-align: left;
-}
-.acesso__reenviar:disabled {
-  opacity: 0.7;
 }
 
 .aceite {

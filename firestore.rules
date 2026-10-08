@@ -58,6 +58,29 @@ service cloud.firestore {
       }
     }
 
+    // RESERVA DE TELEFONE — a unicidade que o login por SMS dava de graça.
+    //
+    // Um documento por número (a chave é o próprio E.164), apontando para o
+    // dono. `create` só vale para número que ainda não existe, então o primeiro
+    // que reivindica fica com ele e os outros são recusados pela própria regra.
+    //
+    // Ninguém lê esta coleção: liberar a leitura deixaria qualquer cliente
+    // logado testar números e descobrir quem está no clube. Por isso a tentativa
+    // de escrita é a checagem, e o app traduz a recusa em "telefone já em uso".
+    match /telefones/{numero} {
+      function souODono() {
+        return request.auth != null && resource.data.uid == request.auth.uid;
+      }
+
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+      allow delete: if souODono();
+
+      // O número não muda de dono no lugar: libera-se e reivindica-se de novo.
+      allow update: if false;
+      allow read: if false;
+    }
+
     // Nada mais no banco é alcançável pelo app.
     match /{documento=**} {
       allow read, write: if false;

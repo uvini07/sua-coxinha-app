@@ -9,12 +9,11 @@ import {
 } from '../dados/clube.js'
 import {
   concluirRedirecionamento,
-  confirmarCodigo as confirmarCodigoSMS,
+  entrarComApple as loginApple,
   entrarComGoogle as loginGoogle,
-  enviarCodigo as enviarCodigoSMS,
-  limparVerificador,
   mensagemDeErro,
   observarSessao,
+  paraE164,
   sairDaConta,
 } from '../firebase/autenticacao.js'
 import {
@@ -25,6 +24,7 @@ import {
   marcarVoucherUsado,
   observarColecao,
   observarPerfil,
+  reservarTelefone,
   resgatarRecompensa,
   salvarPerfil,
   zerarConta,
@@ -95,10 +95,6 @@ export function ClubeProvider({ children }) {
   const [onboardingVisto, setOnboardingVisto] = useState(lerOnboarding)
   const [erro, setErro] = useState('')
   const [ocupado, setOcupado] = useState(false)
-
-  // O objeto que confirma o SMS não é serializável, então vive em ref.
-  const confirmacaoSMS = useRef(null)
-  const [telefoneEmVerificacao, setTelefoneEmVerificacao] = useState('')
 
   // A tela de notificações marca tudo como lido na saída
   // (`useEffect(() => () => lerNotificacoes(), ...)`). Para isso a função
@@ -196,11 +192,11 @@ export function ClubeProvider({ children }) {
 
   // --- Login ---------------------------------------------------------------
 
-  const entrarComGoogle = useCallback(async () => {
+  const entrar = useCallback(async (login) => {
     setErro('')
     setOcupado(true)
     try {
-      await loginGoogle()
+      await login()
       return true
     } catch (e) {
       setErro(mensagemDeErro(e))
@@ -210,45 +206,11 @@ export function ClubeProvider({ children }) {
     }
   }, [])
 
-  const pedirCodigo = useCallback(async (telefone) => {
-    setErro('')
-    setOcupado(true)
-    try {
-      confirmacaoSMS.current = await enviarCodigoSMS(telefone)
-      setTelefoneEmVerificacao(telefone)
-      return true
-    } catch (e) {
-      setErro(mensagemDeErro(e))
-      return false
-    } finally {
-      setOcupado(false)
-    }
-  }, [])
-
-  const confirmarCodigo = useCallback(async (codigo) => {
-    if (!confirmacaoSMS.current) {
-      setErro('A verificação expirou. Peça um novo código.')
-      return false
-    }
-    setErro('')
-    setOcupado(true)
-    try {
-      await confirmarCodigoSMS(confirmacaoSMS.current, codigo)
-      confirmacaoSMS.current = null
-      return true
-    } catch (e) {
-      setErro(mensagemDeErro(e))
-      return false
-    } finally {
-      setOcupado(false)
-    }
-  }, [])
+  const entrarComGoogle = useCallback(() => entrar(loginGoogle), [entrar])
+  const entrarComApple = useCallback(() => entrar(loginApple), [entrar])
 
   const sair = useCallback(async () => {
-    confirmacaoSMS.current = null
-    setTelefoneEmVerificacao('')
     setErro('')
-    limparVerificador()
     await sairDaConta()
   }, [])
 
@@ -277,12 +239,20 @@ export function ClubeProvider({ children }) {
 
   // Fecha o cadastro: grava os dados da etapa 2 e libera o app.
   const concluirCadastro = useCallback(
-    async ({ nome, nascimento, unidade, novidades }) => {
+    async ({ nome, telefone, nascimento, unidade, novidades }) => {
       if (!sessao) return false
+      const e164 = paraE164(telefone)
+      setErro('')
+      setOcupado(true)
       try {
+        // A reserva vem primeiro: se o número já for de outra conta, o cadastro
+        // nem chega a ser gravado e o cliente corrige antes de entrar.
+        await reservarTelefone(sessao.uid, e164)
         await salvarPerfil(sessao.uid, {
           nome: nome.trim(),
           primeiroNome: nome.trim().split(' ')[0],
+          telefone,
+          telefoneE164: e164,
           nascimento,
           unidade,
           aceiteTermos: true,
@@ -293,6 +263,8 @@ export function ClubeProvider({ children }) {
       } catch (e) {
         setErro(mensagemDeErro(e))
         return false
+      } finally {
+        setOcupado(false)
       }
     },
     [sessao],
@@ -391,7 +363,6 @@ export function ClubeProvider({ children }) {
       erro,
       ocupado,
       limparErro: () => setErro(''),
-      telefoneEmVerificacao,
 
       // dados
       usuario,
@@ -406,8 +377,7 @@ export function ClubeProvider({ children }) {
 
       // ações
       entrarComGoogle,
-      pedirCodigo,
-      confirmarCodigo,
+      entrarComApple,
       sair,
       concluirOnboarding,
       concluirCadastro,
@@ -425,7 +395,6 @@ export function ClubeProvider({ children }) {
       onboardingVisto,
       erro,
       ocupado,
-      telefoneEmVerificacao,
       usuario,
       nivel,
       missoes,
@@ -433,8 +402,7 @@ export function ClubeProvider({ children }) {
       vouchers,
       notificacoesFormatadas,
       entrarComGoogle,
-      pedirCodigo,
-      confirmarCodigo,
+      entrarComApple,
       sair,
       concluirOnboarding,
       concluirCadastro,

@@ -13,7 +13,7 @@ export const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 
-// O idioma vale para o SMS de verificação e para as telas do Google.
+// O idioma vale para as telas de login do Google e da Apple.
 auth.languageCode = 'pt-BR'
 
 // Analytics só carrega onde é suportado (não funciona no WebView do Capacitor

@@ -4,7 +4,7 @@ import { useClube } from './estado/clubeContexto.js'
 
 import { Splash } from './telas/Splash.jsx'
 import { Onboarding } from './telas/Onboarding.jsx'
-import { Entrar, Codigo, Cadastro } from './telas/Acesso.jsx'
+import { Entrar, Cadastro } from './telas/Acesso.jsx'
 import { Home } from './telas/Home.jsx'
 import { Carteira, Historico } from './telas/Carteira.jsx'
 import { Missoes, MissaoDetalhe } from './telas/Missoes.jsx'
@@ -17,7 +17,7 @@ import { Niveis } from './telas/Niveis.jsx'
 import { Celebracao } from './telas/Celebracao.jsx'
 
 // Rotas que podem ser abertas sem estar logado.
-const ABERTAS = ['/', '/onboarding', '/entrar', '/codigo']
+const ABERTAS = ['/', '/onboarding', '/entrar']
 
 export function App() {
   const { caminho, partes, params, ir } = useRota()
@@ -55,7 +55,7 @@ export function App() {
     }
 
     // Logado e cadastrado: as telas de login não fazem mais sentido.
-    if (['/entrar', '/codigo', '/cadastro'].includes(caminho)) {
+    if (['/entrar', '/cadastro'].includes(caminho)) {
       ir('/home', { substituir: true })
     }
   }, [caminho, autenticado, carregando, cadastroCompleto, onboardingVisto, ir])
@@ -68,8 +68,6 @@ export function App() {
         return <Onboarding />
       case 'entrar':
         return <Entrar />
-      case 'codigo':
-        return <Codigo />
       case 'cadastro':
         return <Cadastro />
       case 'home':

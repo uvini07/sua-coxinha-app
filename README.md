@@ -15,14 +15,14 @@ npm run preview  # serve o dist/ para testar o PWA de verdade
 
 ## Firebase
 
-O app roda sobre o projeto **`suacoxinhaapp`**: login pelo Authentication, dados no
-Firestore. Não há mais estado de demonstração — quem cria uma conta entra com a carteira
+O app roda sobre o projeto **`suacoxinhaapp`**: login pelo Authentication (Google e Apple),
+dados no Firestore. Não há mais estado de demonstração — quem cria uma conta entra com a carteira
 em zero e só ganha pontos quando uma compra é identificada.
 
 ```
 src/firebase/config.js         chaves do projeto (públicas por natureza)
 src/firebase/app.js            initializeApp, auth, db, analytics
-src/firebase/autenticacao.js   Google, SMS e a tradução dos erros do Firebase
+src/firebase/autenticacao.js   Google, Apple e a tradução dos erros do Firebase
 src/firebase/clube.js          leitura e escrita do Firestore
 firestore.rules                quem alcança o quê
 ```
@@ -34,11 +34,27 @@ usuarios/{uid}                     perfil, saldo, acumulado, progresso das miss�
 usuarios/{uid}/historico/{id}      extrato de pontos
 usuarios/{uid}/vouchers/{id}       recompensas resgatadas
 usuarios/{uid}/notificacoes/{id}   avisos do clube
+telefones/{e164}                   reserva do número → uid do dono
 ```
 
-O `uid` é o do Authentication, então telefone e Google caem na mesma conta se o
-Firebase estiver com *account linking* por e-mail/telefone — hoje são duas contas
-separadas, o que é o padrão do Firebase.
+**Por que não existe login por SMS.** Cada verificação por SMS é cobrada por mensagem.
+Com 40 mil clientes isso seria praticamente toda a conta do Firebase — o Firestore, no
+mesmo cenário, não passa de alguns dólares por mês. Google e Apple não têm custo por uso.
+
+**O telefone continua sendo a chave no caixa**, só que como campo do cadastro em vez de
+credencial de login. O que o SMS garantia de graça — um número, uma conta — passa a vir
+da coleção `telefones`: um documento por número em E.164, e a regra só deixa criar o que
+ainda não existe. O primeiro que reivindica fica com ele.
+
+A coleção é de escrita cega: ninguém pode lê-la, senão qualquer cliente logado poderia
+testar números e descobrir quem está no clube. A tentativa de escrita é a própria
+checagem, e a recusa vira "esse telefone já está em uso".
+
+Quem confere se o número é mesmo da pessoa é o balcão, na primeira compra. É verificação
+presencial, custa zero e é mais forte que um SMS.
+
+**Trocar de telefone ainda não é possível pelo app.** Precisaria liberar a reserva antiga
+e criar a nova; hoje só o cadastro inicial reivindica o número.
 
 **Saldo é dinheiro.** Toda escrita que mexe em pontos passa por `runTransaction` ou
 `increment`: duas abas abertas, ou o caixa e o app ao mesmo tempo, não gravam uma sobre a
@@ -46,13 +62,15 @@ outra, e dois toques no botão de resgate não geram dois vouchers com o saldo d
 
 **O que precisa estar ligado no console** (já está, para `suacoxinhaapp`):
 
-- Authentication → Sign-in method: **Google** e **Telefone** habilitados
+- Authentication → Sign-in method: **Google** habilitado
 - Authentication → Domínios autorizados: `localhost` e o domínio da Vercel.
   Sem isso o login pelo Google devolve `auth/unauthorized-domain`
 - Firestore criado, com as regras deste repositório publicadas:
   `firebase deploy --only firestore:rules`
-- Para testar SMS sem gastar envio: Authentication → Telefone → *Números de telefone para
-  teste*, onde se cadastra um número e um código fixo
+- **Entrar com Apple** é opcional e vem desligado. Exige conta paga no Apple Developer
+  (US$ 99/ano) e a configuração do provedor no console. Depois de configurar, ligue com
+  `VITE_LOGIN_APPLE=true`. A App Store exige login da Apple em app que ofereça login
+  social, então isso vira obrigatório na publicação na loja — na web, não.
 
 Para apontar o app para outro projeto (staging), copie `.env.example` para `.env.local` e
 preencha as variáveis `VITE_FIREBASE_*`; elas têm prioridade sobre os valores padrão.
@@ -63,11 +81,12 @@ preencha as variáveis `VITE_FIREBASE_*`; elas têm prioridade sobre os valores 
 npm run testar:regras
 ```
 
-Sobe o emulador do Firestore e roda `testes/regras.test.mjs`: as 24 operações que o app
+Sobe o emulador do Firestore e roda `testes/regras.test.mjs`: as operações que o app
 realmente faz (criar conta, creditar compra com `increment`, resgatar dentro de uma
 transação, listar as subcoleções ordenadas) mais as que precisam ser recusadas — ler a
-carteira alheia, criar conta já com pontos, escrever numa coleção fora do previsto. É um
-comando só, não precisa de credencial e não toca no projeto de verdade.
+carteira alheia, criar conta já com pontos, tomar um telefone já reservado, escrever numa
+coleção fora do previsto. É um comando só, não precisa de credencial e não toca no projeto
+de verdade.
 
 Vale a pena rodar antes de cada `firebase deploy --only firestore:rules`: regra quebrada
 só aparece quando um cliente não consegue entrar.
@@ -92,7 +111,8 @@ Três pendências conhecidas, as três fáceis de esquecer:
 Não é maquete clicável: o estado é real e vive na conta do cliente, no Firestore — entrar
 em outro celular traz o mesmo saldo.
 
-- Onboarding, login real por **SMS** ou **Google**, cadastro enxuto em duas etapas
+- Onboarding, login real por **Google** (e Apple, quando ligado), cadastro em duas etapas
+  com telefone único por conta
 - Home com o Cartão Dourado, missão em destaque, recompensas e ofertas
 - Carteira com saldo, pendentes, a expirar, gráfico por mês e extrato filtrável
 - Missões com progresso e detalhe

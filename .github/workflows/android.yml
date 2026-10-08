@@ -83,13 +83,47 @@ jobs:
         env:
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$ANDROID_DEBUG_KEYSTORE_BASE64" ]; then
-            mkdir -p ~/.android
-            echo "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
-            echo "Chave fixa aplicada — a SHA-1 não muda entre builds."
-          else
+          if [ -z "$ANDROID_DEBUG_KEYSTORE_BASE64" ]; then
             echo "::warning::Secret ANDROID_DEBUG_KEYSTORE_BASE64 ausente. O Gradle vai gerar uma chave nova, a SHA-1 muda a cada build e o login com Google vai parar de funcionar sozinho."
+            exit 0
           fi
+
+          mkdir -p ~/.android
+          echo "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+
+          # Confere o que realmente saiu da decodificação. Um secret colado pela
+          # metade decodifica sem erro e produz um arquivo inútil; sem esta
+          # conferência isso só apareceria lá na frente, como login quebrado.
+          echo "Arquivo decodificado: $(wc -c < ~/.android/debug.keystore) bytes"
+          sha=$(keytool -list -v -keystore ~/.android/debug.keystore -storepass android 2>/dev/null \
+                | grep 'SHA1:' | head -1 | awk '{print $2}')
+          if [ -z "$sha" ]; then
+            echo "::error::A chave decodificada não é um keystore válido. O secret provavelmente foi colado incompleto — recopie o valor inteiro."
+            exit 1
+          fi
+          echo "SHA-1 da chave fornecida: $sha"
+
+          # Amarra a assinatura explicitamente ao arquivo. Depender do padrão do
+          # Gradle não bastou: ele assinou com outra chave mesmo com esta no
+          # lugar certo. Declarado aqui, não há como escolher outra.
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  debug {
+                      storeFile file("${System.properties['user.home']}/.android/debug.keystore")
+                      storePassword 'android'
+                      keyAlias 'androiddebugkey'
+                      keyPassword 'android'
+                  }
+              }
+              buildTypes {
+                  debug { signingConfig signingConfigs.debug }
+              }
+          }
+          GRADLE
+          echo "Assinatura amarrada à chave fornecida."
+
 
       - name: Sincronizar web → nativo
         run: npx cap sync android
@@ -111,16 +145,38 @@ jobs:
           sha=$("$apksigner" verify --print-certs pontos-dourados.apk | grep -i 'SHA-1 digest' | head -1 | awk '{print $NF}')
           # apksigner imprime sem os dois-pontos; o Firebase espera com.
           formatada=$(echo "$sha" | tr 'a-z' 'A-Z' | sed 's/../&:/g; s/:$//')
-          echo "SHA-1: $formatada"
+          echo "SHA-1 do APK: $formatada"
           {
-            echo "### SHA-1 para cadastrar no Firebase"
+            echo "### SHA-1 do APK"
             echo ""
             echo '```'
             echo "$formatada"
             echo '```'
             echo ""
-            echo "Firebase → Configurações do projeto → app Android → Adicionar impressão digital."
+            echo "Precisa estar cadastrada em Firebase → Configurações do projeto → app Android."
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # Compara com o que o google-services.json diz esperar. É a checagem
+          # que teria pego, na hora, o APK assinado com a chave errada.
+          esperada=$(python3 -c "
+          import json,sys
+          d=json.load(open('firebase/google-services.json'))
+          for c in d['client']:
+              for o in c.get('oauth_client',[]):
+                  if o.get('client_type')==1:
+                      h=o['android_info']['certificate_hash']
+                      print(':'.join(h[i:i+2] for i in range(0,len(h),2)).upper()); sys.exit()
+          " 2>/dev/null || true)
+          if [ -z "$esperada" ]; then
+            echo "::warning::O google-services.json não tem cliente Android (tipo 1). Cadastre a SHA-1 no Firebase e baixe o arquivo de novo."
+          elif [ "$esperada" = "$formatada" ]; then
+            echo "A SHA-1 do APK confere com a registrada no Firebase — o login deve funcionar."
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Confere com o cadastrado no Firebase. Login liberado." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::O APK foi assinado com $formatada, mas o Firebase espera $esperada. O login vai falhar com DEVELOPER_ERROR."
+            exit 1
+          fi
 
       # Artifact do Actions exige login no GitHub e entrega um .zip — e o
       # Android não instala APK de dentro de zip. Serve para guardar histórico,

@@ -1,0 +1,83 @@
+# Publica o app na web pelo próprio GitHub, sem depender de outro serviço.
+#
+# Serve para o iPhone: não existe APK no iOS, e instalar app em aparelho exige
+# conta Apple paga. Mas o app é PWA — pelo Safari, "Adicionar à Tela de Início"
+# dá ícone, tela cheia e funcionamento offline. Para isso só falta um endereço
+# na web, e este workflow fornece um.
+#
+# Funciona em subpasta (uvini07.github.io/sua-coxinha-app/) porque o Vite usa
+# `base: './'` e o roteador é por hash — todos os caminhos do build são
+# relativos.
+#
+# Não substitui a Vercel: é um endereço a mais, útil para testar. Quando o
+# projeto estiver publicado lá, o domínio de produção é aquele.
+
+name: Publicar na web (GitHub Pages)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Uma publicação por vez; se duas correrem juntas, a última vale.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    name: Build e publicação
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `enablement: true` liga o Pages no repositório na primeira execução,
+      # sem precisar mexer nas configurações à mão.
+      - name: Preparar o Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Enviar o site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Publicar
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Mostrar o endereço
+        run: |
+          url="${{ steps.deploy.outputs.page_url }}"
+          echo "No ar: $url"
+          {
+            echo "### App no ar"
+            echo ""
+            echo "$url"
+            echo ""
+            echo "No iPhone: abra no **Safari** → Compartilhar → Adicionar à Tela de Início."
+            echo ""
+            echo "Para o login com Google funcionar, o domínio precisa estar em"
+            echo "Firebase → Authentication → Settings → Authorized domains."
+          } >> "$GITHUB_STEP_SUMMARY"

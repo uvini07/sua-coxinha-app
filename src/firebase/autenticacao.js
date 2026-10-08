@@ -9,16 +9,31 @@
 // garante que ninguém tome o número de outro é a coleção `telefones` com a
 // regra em firestore.rules, não o SMS.
 
+import { Capacitor } from '@capacitor/core'
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 import {
   GoogleAuthProvider,
   OAuthProvider,
   getRedirectResult,
   onAuthStateChanged,
+  signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
   signOut,
 } from 'firebase/auth'
 import { auth } from './app.js'
+
+// Na web o login é do navegador. Dentro do app das lojas ele TEM de ser nativo:
+// o Google recusa OAuth em WebView embutida (erro `disallowed_useragent`), e
+// tanto o popup quanto o redirect do SDK web morrem ali — o popup não existe e
+// o redirect não tem como voltar para `capacitor://localhost`, que não é um
+// domínio que o Firebase aceite autorizar.
+//
+// Então no nativo quem abre a tela de login é o plugin, usando a conta do
+// próprio aparelho. Ele devolve os tokens, e a credencial é montada aqui com o
+// SDK do app — assim o Firestore e o resto do código continuam vendo uma sessão
+// normal do `firebase/auth`, sem saber de onde ela veio.
+const nativo = () => Capacitor.isNativePlatform()
 
 const google = new GoogleAuthProvider()
 // Força a escolha de conta: em aparelho compartilhado, entrar na conta errada
@@ -35,14 +50,36 @@ export function observarSessao(aoMudar) {
   return onAuthStateChanged(auth, aoMudar)
 }
 
-// Dentro do Capacitor (app das lojas) a janela de popup não existe; lá o fluxo
-// é por redirect e o resultado volta na próxima abertura do app.
-const semPopup = () =>
-  window.location.protocol === 'capacitor:' || /\bwv\b|Capacitor/i.test(navigator.userAgent)
+// Navegador embutido fora do Capacitor (o WebView do Instagram, por exemplo):
+// não há popup, mas o redirect ainda funciona porque a origem é um domínio de
+// verdade, autorizado no Firebase.
+const semPopup = () => /\bwv\b|FBAN|FBAV|Instagram/i.test(navigator.userAgent)
+
+// Caminho nativo: o plugin abre o seletor de contas do aparelho e devolve os
+// tokens; o `signInWithCredential` transforma isso na sessão que o app usa.
+async function entrarNativo(nome) {
+  const resultado =
+    nome === 'apple'
+      ? await FirebaseAuthentication.signInWithApple({ skipNativeAuth: false })
+      : await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: false })
+
+  const { idToken, nonce, accessToken } = resultado.credential || {}
+  if (!idToken) throw new Error('sem-credencial-nativa')
+
+  const credencial =
+    nome === 'apple'
+      ? new OAuthProvider('apple.com').credential({ idToken, rawNonce: nonce })
+      : GoogleAuthProvider.credential(idToken, accessToken)
+
+  const { user } = await signInWithCredential(auth, credencial)
+  return user
+}
 
 async function entrarCom(nome) {
   const provedor = PROVEDORES[nome]
   if (!provedor) throw new Error(`provedor desconhecido: ${nome}`)
+
+  if (nativo()) return entrarNativo(nome)
 
   if (semPopup()) {
     await signInWithRedirect(auth, provedor)
@@ -70,6 +107,7 @@ export const entrarComApple = () => entrarCom('apple')
 // Chamado uma vez na subida do app, para fechar um login por redirect que
 // começou antes de o app ser recarregado.
 export async function concluirRedirecionamento() {
+  if (nativo()) return null
   try {
     const resultado = await getRedirectResult(auth)
     return resultado?.user || null
@@ -78,8 +116,18 @@ export async function concluirRedirecionamento() {
   }
 }
 
-export function sairDaConta() {
-  return signOut(auth)
+export async function sairDaConta() {
+  // No nativo a sessão existe em dois lugares: no plugin (conta do aparelho) e
+  // no SDK web. Encerrar só um deixaria o próximo login entrar sozinho na conta
+  // anterior, sem passar pelo seletor.
+  if (nativo()) {
+    try {
+      await FirebaseAuthentication.signOut()
+    } catch {
+      /* se o plugin já estava deslogado, segue */
+    }
+  }
+  await signOut(auth)
 }
 
 // Aceita o telefone como o cliente digitou e devolve em E.164, que é o formato
@@ -102,6 +150,7 @@ const MENSAGENS = {
   'auth/unauthorized-domain':
     'Este endereço não está liberado no Firebase (Authentication → Domínios autorizados).',
   'auth/operation-not-allowed': 'Esse método de login não está habilitado no Firebase.',
+  'sem-credencial-nativa': 'O login do aparelho não devolveu as credenciais. Tente de novo.',
   'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos e tente novamente.',
   'permission-denied': 'Sem permissão para ler seus dados. Confira as regras do Firestore.',
   'telefone-em-uso': 'Esse telefone já está em uso por outra conta do clube.',

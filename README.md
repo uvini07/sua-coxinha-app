@@ -186,18 +186,24 @@ os números reais saem da conta de margem, não daqui.
 `no-cache` do service worker. No Android o app instala pela tela inicial com push funcionando;
 no iPhone a instalação é manual e o push só vale depois de adicionar à tela de início.
 
-**Lojas, via Capacitor** — o `capacitor.config.json` já está pronto:
+**Lojas, via Capacitor** — o Capacitor já está instalado e configurado:
 
 ```bash
-npm install @capacitor/core @capacitor/cli
-npx cap init          # já lê o capacitor.config.json
-npm install @capacitor/android @capacitor/ios
-npm run build && npx cap sync
-npx cap open android  # Android Studio
-npx cap open ios      # Xcode (precisa de Mac)
+npx cap add android      # só na primeira vez
+npm run app:android      # build + sync + abre o Android Studio
+npm run app:ios          # idem no Xcode (precisa de Mac)
+npm run app:sync         # depois de mudar código web
 ```
 
-O mesmo código vira binário nas duas lojas, com push nativo por APNs e FCM. O `base: './'`
-do Vite e as URLs relativas das fontes existem justamente para isso.
+O mesmo código vira binário nas duas lojas. O `base: './'` do Vite e as URLs relativas
+das fontes existem justamente para isso.
+
+O login dentro do app **não** usa o popup do navegador: o Google recusa OAuth em WebView
+embutida. No nativo quem abre o seletor de contas é o plugin
+`@capacitor-firebase/authentication`, e a credencial vira sessão do `firebase/auth` pelo
+`signInWithCredential`. Os dois caminhos convivem em `src/firebase/autenticacao.js`.
+
+O passo a passo completo — `google-services.json`, as duas SHA-1 do Android, o esquema de
+URL do iOS, Entrar com Apple — está em **[APP-NATIVO.md](APP-NATIVO.md)**.
 
 Contas necessárias: Apple Developer (US$ 99/ano) e Google Play (US$ 25, uma vez).

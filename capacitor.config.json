@@ -4,7 +4,8 @@
   "webDir": "dist",
   "backgroundColor": "#131313",
   "android": {
-    "backgroundColor": "#131313"
+    "backgroundColor": "#131313",
+    "allowMixedContent": false
   },
   "ios": {
     "backgroundColor": "#131313",
@@ -15,6 +16,13 @@
       "launchAutoHide": true,
       "backgroundColor": "#131313",
       "showSpinner": false
+    },
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": [
+        "google.com",
+        "apple.com"
+      ]
     }
   }
 }

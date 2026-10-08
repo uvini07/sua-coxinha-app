@@ -45,12 +45,12 @@ jobs:
           node-version: '22'
           cache: npm
 
-      # `enablement: true` liga o Pages no repositório na primeira execução,
-      # sem precisar mexer nas configurações à mão.
+      # Sem `enablement: true`: o token do workflow não pode ativar o Pages —
+      # isso é configuração do repositório, reservada ao dono. Tem de ser
+      # ligado uma vez em Settings → Pages → Source: "GitHub Actions". Depois
+      # disso este passo só lê a configuração, e nunca mais é preciso tocar.
       - name: Preparar o Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Instalar dependências
         run: npm ci

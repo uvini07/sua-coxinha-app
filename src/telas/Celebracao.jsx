@@ -128,8 +128,52 @@ export function Celebracao({ tipo, params }) {
     )
   }
 
+  // Conta criada: a carteira começa em zero, e a tela diz isso sem rodeio —
+  // prometer pontos que não existem seria a pior primeira impressão possível.
+  if (tipo === 'boas-vindas') {
+    return (
+      <Tela className="celebra-tela">
+        <Palco>
+          <span className="celebra__marca">
+            <Icone nome="brilho" tamanho={48} cor="var(--marrom-churros)" traco={2.2} />
+          </span>
+          <span className="t-overline c-ouro">Bem-vindo ao clube</span>
+          <h1 className="t-h1 centro">
+            Pronto,
+            <br />
+            {usuario.primeiroNome || 'cliente'}.
+          </h1>
+          <p className="t-corpo-g c-secundario centro">
+            Sua carteira começa em zero. A partir da próxima compra identificada no caixa, cada real vira ponto.
+          </p>
+
+          <div className="caixa caixa--ouro pilha g12 mt16" style={{ width: '100%' }}>
+            <span className="t-overline c-sutil">Como acumular</span>
+            {[
+              'Mostre seu QR Code ou informe seu telefone no caixa',
+              'Cada R$ 1,00 vale 2 Pontos Dourados',
+              'Missões Douradas pagam bônus por fora',
+            ].map((t) => (
+              <span key={t} className="linha-h g12">
+                <Icone nome="check-circulo" tamanho={18} cor="var(--ouro-500)" />
+                <span className="t-corpo c-secundario cresce">{t}</span>
+              </span>
+            ))}
+          </div>
+
+          <div className="pilha g8 mt24" style={{ width: '100%' }}>
+            <Botao onClick={() => ir('/qr', { substituir: true })}>Ver meu QR Code</Botao>
+            <Botao estilo="fantasma" onClick={() => ir('/home', { substituir: true })}>
+              Explorar o clube
+            </Botao>
+          </div>
+        </Palco>
+      </Tela>
+    )
+  }
+
   // Pontos creditados depois de uma compra identificada
-  const pontos = Number(params.p) || 120
+  const pontos = Number(params.p) || 0
   return (
     <Tela className="celebra-tela">
       <Palco>

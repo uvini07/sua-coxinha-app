@@ -5,7 +5,9 @@ import { Botao, Brilho } from '../componentes/primitivos.jsx'
 import { AppBar, Tela } from '../componentes/Tela.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { UNIDADES } from '../dados/clube.js'
-import { LOGIN_DE_TESTE, MODO_TESTE } from '../dados/demo.js' // TEMPORÁRIO
+
+// O SMS do Firebase tem 6 dígitos.
+const DIGITOS = 6
 
 // Máscara de telefone brasileiro, só com os dígitos que o usuário digitou.
 function mascararTelefone(bruto) {
@@ -16,17 +18,33 @@ function mascararTelefone(bruto) {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
 }
 
+function Erro({ texto }) {
+  if (!texto) return null
+  return (
+    <p className="aviso-teste mt16" role="alert">
+      <Icone nome="info" tamanho={15} cor="var(--sinal-alerta)" />
+      <span className="t-peq">{texto}</span>
+    </p>
+  )
+}
+
 export function Entrar() {
   const { ir } = useRota()
-  const { atualizarPerfil } = useClube()
-  // TEMPORÁRIO: login de teste. Em produção é `useState('')`.
-  const [telefone, setTelefone] = useState(MODO_TESTE ? mascararTelefone(LOGIN_DE_TESTE.telefone) : '')
+  const { pedirCodigo, entrarComGoogle, erro, ocupado, limparErro } = useClube()
+  const [telefone, setTelefone] = useState('')
   const valido = telefone.replace(/\D/g, '').length >= 10
 
-  const continuar = () => {
-    if (!valido) return
-    atualizarPerfil({ telefone })
-    ir('/codigo')
+  const continuar = async () => {
+    if (!valido || ocupado) return
+    // O reCAPTCHA invisível roda aqui; o Firebase só manda o SMS depois dele.
+    if (await pedirCodigo(telefone)) ir('/codigo')
+  }
+
+  const comGoogle = async () => {
+    if (ocupado) return
+    // Em popup a sessão abre na hora e o porteiro do App leva para o destino.
+    // Em redirect o app recarrega e cai no mesmo caminho.
+    await entrarComGoogle()
   }
 
   return (
@@ -54,31 +72,29 @@ export function Entrar() {
               autoComplete="tel"
               placeholder="(11) 90000-0000"
               value={telefone}
-              onChange={(e) => setTelefone(mascararTelefone(e.target.value))}
+              onChange={(e) => {
+                limparErro()
+                setTelefone(mascararTelefone(e.target.value))
+              }}
             />
           </label>
         </div>
 
         <div className="pilha g12 mt24">
-          <Botao onClick={continuar} desabilitado={!valido}>
-            Continuar
+          <Botao onClick={continuar} desabilitado={!valido || ocupado}>
+            {ocupado ? 'Enviando código…' : 'Receber código por SMS'}
           </Botao>
           <div className="acesso__ou">
             <i />
             <span className="t-peq c-sutil">ou</span>
             <i />
           </div>
-          <Botao estilo="contorno" icone="compartilhar" onClick={continuar} desabilitado={!valido}>
-            Entrar com WhatsApp
+          <Botao estilo="contorno" icone="usuario" onClick={comGoogle} desabilitado={ocupado}>
+            Entrar com Google
           </Botao>
         </div>
 
-        {MODO_TESTE && (
-          <p className="aviso-teste mt16">
-            <Icone nome="info" tamanho={15} cor="var(--sinal-alerta)" />
-            <span className="t-peq">Número fixo de teste — sai quando a verificação por WhatsApp entrar</span>
-          </p>
-        )}
+        <Erro texto={erro} />
 
         <p className="t-peq c-sutil centro mt24">
           Ao continuar você concorda com os Termos de Uso e a Política de Privacidade da Sua Coxinha.
@@ -94,12 +110,17 @@ export function Entrar() {
 }
 
 export function Codigo() {
-  const { ir } = useRota()
-  const { usuario } = useClube()
-  // TEMPORÁRIO: código de teste. Em produção é `useState(['', '', '', ''])`.
-  const [digitos, setDigitos] = useState(MODO_TESTE ? LOGIN_DE_TESTE.codigo.split('') : ['', '', '', ''])
+  const { ir, voltar } = useRota()
+  const { confirmarCodigo, pedirCodigo, telefoneEmVerificacao, erro, ocupado, limparErro } = useClube()
+  const [digitos, setDigitos] = useState(Array(DIGITOS).fill(''))
   const campos = useRef([])
-  const [segundos, setSegundos] = useState(28)
+  const [segundos, setSegundos] = useState(45)
+
+  // Chegou aqui sem ter pedido código (recarregou a página, por exemplo):
+  // volta para a entrada em vez de ficar numa tela que não confirma nada.
+  useEffect(() => {
+    if (!telefoneEmVerificacao) ir('/entrar', { substituir: true })
+  }, [telefoneEmVerificacao, ir])
 
   useEffect(() => {
     campos.current[0]?.focus()
@@ -113,25 +134,48 @@ export function Codigo() {
 
   const completo = digitos.every((d) => d !== '')
 
+  const verificar = async (codigo = digitos.join('')) => {
+    if (codigo.length < DIGITOS || ocupado) return
+    // Deu certo? O porteiro do App decide entre /cadastro e /home conforme o
+    // perfil no Firestore — aqui não se decide rota de destino.
+    if (!(await confirmarCodigo(codigo))) setDigitos(Array(DIGITOS).fill(''))
+  }
+
   const escrever = (i, valor) => {
-    const d = valor.replace(/\D/g, '').slice(-1)
+    limparErro()
+    const digitado = valor.replace(/\D/g, '')
+    if (!digitado) {
+      const novos = [...digitos]
+      novos[i] = ''
+      setDigitos(novos)
+      return
+    }
+    // Colar o código inteiro (ou o preenchimento automático do SMS no Android)
+    // entra tudo em um campo só: distribui pelos seguintes.
     const novos = [...digitos]
-    novos[i] = d
+    for (let k = 0; k < digitado.length && i + k < DIGITOS; k++) novos[i + k] = digitado[k]
     setDigitos(novos)
-    if (d && i < 3) campos.current[i + 1]?.focus()
+    const proximo = Math.min(DIGITOS - 1, i + digitado.length)
+    campos.current[proximo]?.focus()
+    if (novos.every((d) => d !== '')) verificar(novos.join(''))
   }
 
   const apagar = (i, e) => {
     if (e.key === 'Backspace' && !digitos[i] && i > 0) campos.current[i - 1]?.focus()
   }
 
+  const reenviar = async () => {
+    if (segundos > 0 || ocupado) return
+    if (await pedirCodigo(telefoneEmVerificacao)) setSegundos(45)
+  }
+
   return (
     <Tela className="acesso">
-      <AppBar titulo="Verificação" />
+      <AppBar titulo="Verificação" aoVoltar={voltar} />
       <div className="px pilha g12 mt16">
         <h1 className="t-h1">Digite o código.</h1>
         <p className="t-corpo-g c-secundario">
-          Enviamos um código de 4 dígitos por WhatsApp para {usuario.telefone}.
+          Enviamos um código de {DIGITOS} dígitos por SMS para {telefoneEmVerificacao}.
         </p>
       </div>
 
@@ -143,7 +187,7 @@ export function Codigo() {
             className={`codigo__caixa${d ? ' codigo__caixa--cheia' : ''}`}
             type="tel"
             inputMode="numeric"
-            maxLength={1}
+            autoComplete={i === 0 ? 'one-time-code' : 'off'}
             value={d}
             onChange={(e) => escrever(i, e.target.value)}
             onKeyDown={(e) => apagar(i, e)}
@@ -152,16 +196,18 @@ export function Codigo() {
         ))}
       </div>
 
-      <div className="px linha-h g8 mt24">
+      <button type="button" className="px linha-h g8 mt24 acesso__reenviar" onClick={reenviar} disabled={segundos > 0}>
         <Icone nome="relogio" tamanho={16} cor="var(--texto-sutil)" />
         <span className="t-peq c-sutil">
           {segundos > 0 ? `Reenviar código em 00:${String(segundos).padStart(2, '0')}` : 'Reenviar código'}
         </span>
-      </div>
+      </button>
+
+      <Erro texto={erro} />
 
       <div className="px mt32">
-        <Botao onClick={() => ir('/cadastro')} desabilitado={!completo}>
-          Verificar
+        <Botao onClick={() => verificar()} desabilitado={!completo || ocupado}>
+          {ocupado ? 'Verificando…' : 'Verificar'}
         </Botao>
       </div>
     </Tela>
@@ -170,18 +216,24 @@ export function Codigo() {
 
 export function Cadastro() {
   const { ir } = useRota()
-  const { usuario, atualizarPerfil, entrar } = useClube()
+  const { usuario, concluirCadastro, erro, ocupado } = useClube()
   const [nome, setNome] = useState(usuario.nome)
   const [nascimento, setNascimento] = useState(usuario.nascimento)
   const [unidade, setUnidade] = useState(usuario.unidade)
-  const [aceite, setAceite] = useState(true)
+  const [aceite, setAceite] = useState(false)
   const [novidades, setNovidades] = useState(true)
 
-  const concluir = () => {
-    if (!nome.trim() || !aceite) return
-    atualizarPerfil({ nome, primeiroNome: nome.trim().split(' ')[0], nascimento, unidade })
-    entrar()
-    ir('/home', { substituir: true })
+  // Entrando pelo Google, o nome já vem da conta — mas só depois de o perfil
+  // chegar do Firestore, que pode ser um quadro depois desta tela montar.
+  useEffect(() => {
+    if (!nome && usuario.nome) setNome(usuario.nome)
+  }, [usuario.nome, nome])
+
+  const concluir = async () => {
+    if (!nome.trim() || !aceite || ocupado) return
+    if (await concluirCadastro({ nome, nascimento, unidade, novidades })) {
+      ir('/celebracao/boas-vindas', { substituir: true })
+    }
   }
 
   return (
@@ -252,9 +304,11 @@ export function Cadastro() {
         ))}
       </div>
 
+      <Erro texto={erro} />
+
       <div className="px mt32">
-        <Botao onClick={concluir} desabilitado={!nome.trim() || !aceite}>
-          Entrar no clube
+        <Botao onClick={concluir} desabilitado={!nome.trim() || !aceite || ocupado}>
+          {ocupado ? 'Criando sua conta…' : 'Entrar no clube'}
         </Botao>
       </div>
     </Tela>

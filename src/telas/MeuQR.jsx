@@ -22,11 +22,15 @@ export function MeuQR() {
     }
   }, [])
 
-  const simularCaixa = () => {
+  const simularCaixa = async () => {
     setSimulando(true)
-    const pontos = registrarCompra(5980, unidade.nome)
-    avancarMissao('sequencia')
-    setTimeout(() => ir(`/celebracao/pontos?p=${pontos}`, { substituir: true }), 700)
+    const pontos = await registrarCompra(5980, unidade.nome)
+    await avancarMissao('sequencia')
+    if (!pontos) {
+      setSimulando(false)
+      return
+    }
+    ir(`/celebracao/pontos?p=${pontos}`, { substituir: true })
   }
 
   return (

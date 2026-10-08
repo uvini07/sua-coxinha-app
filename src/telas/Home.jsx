@@ -104,15 +104,19 @@ export function Home() {
         ))}
       </section>
 
-      <section className="px mt32 pilha">
-        <CabecalhoSecao titulo="Atividade recente" acao="Histórico" onAcao={() => ir('/historico')} />
-        {historico.slice(0, 3).map((h, i) => (
-          <div key={h.id}>
-            <LinhaHistorico item={h} />
-            {i < 2 && <Divisor recuo={54} />}
-          </div>
-        ))}
-      </section>
+      {/* A seção só existe quando há atividade — numa conta nova ela seria um
+          título com nada embaixo. */}
+      {historico.length > 0 && (
+        <section className="px mt32 pilha">
+          <CabecalhoSecao titulo="Atividade recente" acao="Histórico" onAcao={() => ir('/historico')} />
+          {historico.slice(0, 3).map((h, i) => (
+            <div key={h.id}>
+              <LinhaHistorico item={h} />
+              {i < 2 && <Divisor recuo={54} />}
+            </div>
+          ))}
+        </section>
+      )}
     </Tela>
   )
 }

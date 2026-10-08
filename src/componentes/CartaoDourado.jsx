@@ -33,16 +33,25 @@ export function CartaoDourado({ saldo, pendentes, aExpirar, nivel, onClick, comp
         <span className="t-forte">Pontos Dourados</span>
       </div>
 
-      <div className="cartao-ouro__rodape">
-        <span>
-          <i style={{ background: 'rgba(70,35,2,0.45)' }} />
-          {pendentes} pendentes
-        </span>
-        <span>
-          <i style={{ background: '#8A2B06' }} />
-          {aExpirar} expiram em 7 dias
-        </span>
-      </div>
+      {/* Pendentes e a expirar só aparecem quando existem: numa carteira nova,
+          dois zeros no rodapé do cartão não informam nada e ainda sugerem que
+          alguma coisa está prestes a sumir. */}
+      {(pendentes > 0 || aExpirar > 0) && (
+        <div className="cartao-ouro__rodape">
+          {pendentes > 0 && (
+            <span>
+              <i style={{ background: 'rgba(70,35,2,0.45)' }} />
+              {pendentes} pendentes
+            </span>
+          )}
+          {aExpirar > 0 && (
+            <span>
+              <i style={{ background: '#8A2B06' }} />
+              {aExpirar} expiram em 7 dias
+            </span>
+          )}
+        </div>
+      )}
     </Elemento>
   )
 }

@@ -17,23 +17,48 @@ import { Niveis } from './telas/Niveis.jsx'
 import { Celebracao } from './telas/Celebracao.jsx'
 
 // Rotas que podem ser abertas sem estar logado.
-const ABERTAS = ['/', '/onboarding', '/entrar', '/codigo', '/cadastro']
+const ABERTAS = ['/', '/onboarding', '/entrar', '/codigo']
 
 export function App() {
   const { caminho, partes, params, ir } = useRota()
-  const { autenticado, onboardingVisto } = useClube()
+  const { autenticado, carregando, cadastroCompleto, onboardingVisto } = useClube()
 
-  // Porteiro: onboarding antes de tudo, login antes do app.
+  // Porteiro: onboarding antes de tudo, login antes do app, cadastro antes de
+  // qualquer tela com pontos. Enquanto o Firebase ainda está dizendo se existe
+  // sessão (`carregando`), ninguém é redirecionado — senão o app jogaria o
+  // cliente já logado para a tela de entrada a cada recarga.
   useEffect(() => {
+    if (carregando) return
     if (caminho === '/') return
-    if (!onboardingVisto && caminho !== '/onboarding') {
-      ir('/onboarding', { substituir: true })
+
+    // O onboarding vem antes de tudo, e este ramo termina aqui: se ele só
+    // redirecionasse, um cliente já logado que ainda não viu o onboarding
+    // ficaria girando entre /onboarding e /cadastro para sempre.
+    if (!onboardingVisto) {
+      if (caminho !== '/onboarding') ir('/onboarding', { substituir: true })
       return
     }
-    if (!autenticado && !ABERTAS.includes(caminho)) {
-      ir('/entrar', { substituir: true })
+
+    if (!autenticado) {
+      if (!ABERTAS.includes(caminho)) ir('/entrar', { substituir: true })
+      return
     }
-  }, [caminho, autenticado, onboardingVisto, ir])
+
+    // Logado mas sem cadastro fechado: só a etapa 2 e a celebração que vem
+    // logo depois dela (o documento no Firestore pode levar um quadro para
+    // chegar de volta, e seria feio piscar o cadastro de novo).
+    if (!cadastroCompleto) {
+      if (caminho !== '/cadastro' && caminho !== '/celebracao/boas-vindas') {
+        ir('/cadastro', { substituir: true })
+      }
+      return
+    }
+
+    // Logado e cadastrado: as telas de login não fazem mais sentido.
+    if (['/entrar', '/codigo', '/cadastro'].includes(caminho)) {
+      ir('/home', { substituir: true })
+    }
+  }, [caminho, autenticado, carregando, cadastroCompleto, onboardingVisto, ir])
 
   const tela = () => {
     switch (partes[0]) {

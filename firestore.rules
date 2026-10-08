@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// REGRAS DO FIRESTORE — Pontos Dourados
+//
+// Publicar:  firebase deploy --only firestore:rules
+//
+// O que estas regras garantem hoje:
+//   · cada cliente só alcança o próprio documento e as próprias subcoleções;
+//   · ninguém lê a carteira de outra pessoa, nem lista a coleção `usuarios`;
+//   · uma conta nova nasce obrigatoriamente com saldo zero.
+//
+// ⚠️ PENDÊNCIA PARA PRODUÇÃO — saldo escrito pelo cliente.
+// Enquanto não existe integração com o PDV, o app credita pontos direto do
+// navegador (o botão "Simular leitura no caixa"). Isso significa que um cliente
+// com conhecimento técnico consegue se dar pontos. É aceitável em teste e
+// inaceitável quando o clube for real.
+//
+// Quando a Cloud Function do caixa entrar, troque o bloco `allow update` do
+// documento do usuário pelo que está comentado no fim deste arquivo: aí só o
+// Admin SDK (que ignora estas regras) mexe em saldo e acumulado.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /usuarios/{uid} {
+      function meu() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      // Conta nova nasce zerada. Esta é a regra do produto, escrita onde o
+      // cliente não consegue burlar: nem com o app alterado dá para criar um
+      // documento já com pontos.
+      function nasceZerada() {
+        return request.resource.data.saldo == 0
+            && request.resource.data.acumulado == 0
+            && request.resource.data.pendentes == 0
+            && request.resource.data.aExpirar == 0
+            && request.resource.data.resgates == 0;
+      }
+
+      allow get: if meu();
+      allow create: if meu() && nasceZerada();
+      allow update: if meu();
+      allow delete: if meu();
+
+      // Ninguém lista a coleção inteira: `list` fica fora de propósito.
+      allow list: if false;
+
+      match /{colecao}/{documento} {
+        allow read, write: if request.auth != null
+                           && request.auth.uid == uid
+                           && colecao in ['historico', 'vouchers', 'notificacoes'];
+      }
+    }
+
+    // Nada mais no banco é alcançável pelo app.
+    match /{documento=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// --- Versão para quando o PDV estiver integrado -----------------------------
+//
+//      function pontosIntactos() {
+//        return request.resource.data.saldo == resource.data.saldo
+//            && request.resource.data.acumulado == resource.data.acumulado
+//            && request.resource.data.resgates == resource.data.resgates
+//            && request.resource.data.missoes == resource.data.missoes;
+//      }
+//
+//      allow update: if meu() && pontosIntactos();
+//
+// E as subcoleções `historico` e `vouchers` passam a ser somente leitura para
+// o cliente — quem escreve nelas é a função do servidor.

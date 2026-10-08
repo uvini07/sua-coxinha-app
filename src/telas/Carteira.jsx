@@ -59,32 +59,44 @@ export function Carteira() {
         ))}
       </div>
 
-      <section className="px mt32 pilha g12">
-        <CabecalhoSecao titulo="Evolução dos pontos" />
-        <div className="grafico">
-          {meses.map((m, i) => (
-            <div key={m.chave} className="grafico__coluna">
-              <i
-                style={{
-                  height: `${Math.max(8, (m.ganhos / teto) * 92)}px`,
-                  background: i === meses.length - 1 ? 'var(--gradiente-ouro)' : 'var(--neutro-700)',
-                }}
-              />
-              <span className={`t-peq ${i === meses.length - 1 ? 'c-ouro' : 'c-sutil'}`}>{MESES[m.mes]}</span>
+      {/* Conta nova não tem gráfico nem lançamento: em vez de desenhar um eixo
+          vazio, a carteira explica como o primeiro ponto entra. */}
+      {historico.length === 0 ? (
+        <Vazio
+          icone="carteira"
+          titulo="Sua carteira está começando"
+          texto="Informe seu telefone ou mostre seu QR Code no caixa. A partir da primeira compra, cada real vira 2 Pontos Dourados e o extrato aparece aqui."
+        />
+      ) : (
+        <>
+          <section className="px mt32 pilha g12">
+            <CabecalhoSecao titulo="Evolução dos pontos" />
+            <div className="grafico">
+              {meses.map((m, i) => (
+                <div key={m.chave} className="grafico__coluna">
+                  <i
+                    style={{
+                      height: `${Math.max(8, (m.ganhos / teto) * 92)}px`,
+                      background: i === meses.length - 1 ? 'var(--gradiente-ouro)' : 'var(--neutro-700)',
+                    }}
+                  />
+                  <span className={`t-peq ${i === meses.length - 1 ? 'c-ouro' : 'c-sutil'}`}>{MESES[m.mes]}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
 
-      <section className="px mt32 pilha">
-        <CabecalhoSecao titulo="Últimos lançamentos" acao="Ver tudo" onAcao={() => ir('/historico')} />
-        {historico.slice(0, 5).map((h, i) => (
-          <div key={h.id}>
-            <LinhaHistorico item={h} />
-            {i < 4 && <Divisor recuo={54} />}
-          </div>
-        ))}
-      </section>
+          <section className="px mt32 pilha">
+            <CabecalhoSecao titulo="Últimos lançamentos" acao="Ver tudo" onAcao={() => ir('/historico')} />
+            {historico.slice(0, 5).map((h, i) => (
+              <div key={h.id}>
+                <LinhaHistorico item={h} />
+                {i < 4 && <Divisor recuo={54} />}
+              </div>
+            ))}
+          </section>
+        </>
+      )}
     </Tela>
   )
 }

@@ -215,13 +215,16 @@
   background: var(--fundo-elevado);
 }
 
+/* Seis casas (o SMS do Firebase tem 6 dígitos) na largura de um celular:
+   o gap menor e o min-width: 0 impedem que a linha estoure. */
 .codigo__campos {
   display: flex;
-  gap: var(--e12);
+  gap: var(--e8);
 }
 .codigo__caixa {
   flex: 1;
-  height: 76px;
+  min-width: 0;
+  height: 68px;
   text-align: center;
   font-family: var(--fonte-ouro);
   font-size: 30px;
@@ -237,6 +240,17 @@
 }
 .codigo__caixa--cheia {
   border-color: var(--borda-media);
+}
+
+/* O "reenviar" é um botão de verdade, mas tem a cara de um texto auxiliar. */
+.acesso__reenviar {
+  background: none;
+  border: 0;
+  width: 100%;
+  text-align: left;
+}
+.acesso__reenviar:disabled {
+  opacity: 0.7;
 }
 
 .aceite {
@@ -804,7 +818,7 @@
   font-weight: 700;
 }
 
-/* Aviso do login de teste — some junto com src/dados/demo.js */
+/* Aviso de erro do login (código inválido, sem rede, número recusado). */
 .aviso-teste {
   display: flex;
   align-items: center;

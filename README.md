@@ -13,21 +13,71 @@ npm run build    # gera dist/
 npm run preview  # serve o dist/ para testar o PWA de verdade
 ```
 
+## Firebase
+
+O app roda sobre o projeto **`suacoxinhaapp`**: login pelo Authentication, dados no
+Firestore. Não há mais estado de demonstração — quem cria uma conta entra com a carteira
+em zero e só ganha pontos quando uma compra é identificada.
+
+```
+src/firebase/config.js         chaves do projeto (públicas por natureza)
+src/firebase/app.js            initializeApp, auth, db, analytics
+src/firebase/autenticacao.js   Google, SMS e a tradução dos erros do Firebase
+src/firebase/clube.js          leitura e escrita do Firestore
+firestore.rules                quem alcança o quê
+```
+
+**Coleções**
+
+```
+usuarios/{uid}                     perfil, saldo, acumulado, progresso das missões
+usuarios/{uid}/historico/{id}      extrato de pontos
+usuarios/{uid}/vouchers/{id}       recompensas resgatadas
+usuarios/{uid}/notificacoes/{id}   avisos do clube
+```
+
+O `uid` é o do Authentication, então telefone e Google caem na mesma conta se o
+Firebase estiver com *account linking* por e-mail/telefone — hoje são duas contas
+separadas, o que é o padrão do Firebase.
+
+**Saldo é dinheiro.** Toda escrita que mexe em pontos passa por `runTransaction` ou
+`increment`: duas abas abertas, ou o caixa e o app ao mesmo tempo, não gravam uma sobre a
+outra, e dois toques no botão de resgate não geram dois vouchers com o saldo de um.
+
+**O que precisa estar ligado no console** (já está, para `suacoxinhaapp`):
+
+- Authentication → Sign-in method: **Google** e **Telefone** habilitados
+- Authentication → Domínios autorizados: `localhost` e o domínio da Vercel.
+  Sem isso o login pelo Google devolve `auth/unauthorized-domain`
+- Firestore criado, com as regras deste repositório publicadas:
+  `firebase deploy --only firestore:rules`
+- Para testar SMS sem gastar envio: Authentication → Telefone → *Números de telefone para
+  teste*, onde se cadastra um número e um código fixo
+
+Para apontar o app para outro projeto (staging), copie `.env.example` para `.env.local` e
+preencha as variáveis `VITE_FIREBASE_*`; elas têm prioridade sobre os valores padrão.
+
 ## Antes de produção
 
-Duas pendências conhecidas, as duas fáceis de esquecer:
+Três pendências conhecidas, as três fáceis de esquecer:
 
 1. **Licença da fonte Brown Beige.** A versão na guia de marca é gratuita só para uso
    pessoal; uso comercial exige comprar. Detalhes e alternativas em [FONTES.md](FONTES.md).
-2. **Login fixo de teste.** `src/dados/demo.js` deixa telefone e código já preenchidos na
-   entrada, porque ainda não existe verificação por WhatsApp. Apagar o arquivo e seguir as
-   duas linhas de instrução que estão nele.
+2. **O cliente ainda credita os próprios pontos.** Enquanto não existe integração com o
+   PDV, o botão "Simular leitura no caixa" grava saldo direto do navegador — ou seja, quem
+   entende do assunto consegue se dar pontos. A correção está escrita e comentada no fim de
+   `firestore.rules`: quando a Cloud Function do caixa entrar, saldo e extrato passam a ser
+   escritos só pelo Admin SDK, e o cliente fica com leitura.
+3. **Notificações são lidas, nunca criadas.** O app lê `usuarios/{uid}/notificacoes` e
+   marca como lidas, mas ninguém escreve lá ainda. Quem vai criar é a mesma função do
+   servidor (pontos creditados, pontos a expirar, nova recompensa).
 
 ## O que já funciona
 
-Não é maquete clicável: o estado é real e persiste no aparelho.
+Não é maquete clicável: o estado é real e vive na conta do cliente, no Firestore — entrar
+em outro celular traz o mesmo saldo.
 
-- Onboarding, login por telefone com código, cadastro enxuto
+- Onboarding, login real por **SMS** ou **Google**, cadastro enxuto em duas etapas
 - Home com o Cartão Dourado, missão em destaque, recompensas e ofertas
 - Carteira com saldo, pendentes, a expirar, gráfico por mês e extrato filtrável
 - Missões com progresso e detalhe
@@ -76,17 +126,20 @@ public/
   sw.js        service worker (offline)
 src/
   dados/clube.js          catálogo, níveis, missões, parceiros — fonte única enquanto não há API
-  estado/ClubeProvider    saldo, resgates, vouchers, histórico (localStorage)
+  firebase/               autenticação e Firestore
+  estado/ClubeProvider    traduz o Firebase na forma que as telas esperam
   rotas/useRota.js        roteador por hash
   componentes/            design system em React
   telas/                  uma tela por rota
   estilos/tokens.css      as variáveis do Figma viradas CSS
 ```
 
-## Quando o backend entrar
+## Quando o PDV entrar
 
-Trocar só o `ClubeProvider`. As telas consomem `useClube()` e não sabem de onde vêm os dados.
-Os pontos de integração são `resgatar()`, `registrarCompra()`, `avancarMissao()` e `entrar()`.
+As telas consomem `useClube()` e não sabem de onde vêm os dados: a troca acontece dentro de
+`src/firebase/clube.js`. O ponto de integração é `creditarCompra()` — hoje chamado pelo
+botão da tela do QR, amanhã por uma Cloud Function que o caixa dispara com o `uid` lido do
+QR Code (ou com o telefone informado no balcão).
 
 A economia de pontos vive em `src/dados/clube.js` e é **demonstrativa**: 2 pontos por real,
 ~20 pontos por R$ 1,00 de recompensa. O briefing manda que isso seja parametrizável no painel —

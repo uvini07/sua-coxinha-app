@@ -217,7 +217,6 @@ export const MISSOES = [
       'Quatro compras no mesmo mês e o bônus é seu. A sequência reinicia no dia 1º — vale compra presencial, iFood e 99Food.',
     icone: 'fogo',
     meta: 4,
-    feito: 3,
     recompensa: 150,
     prazo: 'Faltam 6 dias',
     comoFunciona: [
@@ -234,7 +233,6 @@ export const MISSOES = [
       'São oito recheios no balcão e você sempre pede os mesmos. Prove um que ainda não entrou na sua lista e leve pontos por isso.',
     icone: 'brilho',
     meta: 1,
-    feito: 0,
     recompensa: 80,
     prazo: 'Faltam 12 dias',
     comoFunciona: [
@@ -250,10 +248,8 @@ export const MISSOES = [
     detalhe: 'Mande seu convite. Quando a pessoa fizer a primeira compra identificada, vocês dois ganham pontos.',
     icone: 'pessoas',
     meta: 1,
-    feito: 1,
     recompensa: 200,
-    prazo: 'Concluída ontem',
-    concluida: true,
+    prazo: 'Sem prazo',
     comoFunciona: [
       ['Mande seu convite', 'Pelo WhatsApp, em dois toques.'],
       ['A pessoa se cadastra', 'Com o telefone dela, no caixa ou no app.'],
@@ -267,7 +263,6 @@ export const MISSOES = [
     detalhe: 'A missão longa: cinco recheios diferentes ao longo do trimestre. Quem termina ganha o selo e o bônus cheio.',
     icone: 'trofeu',
     meta: 5,
-    feito: 0,
     recompensa: 300,
     prazo: 'Desbloqueia no nível Diamante',
     bloqueada: true,
@@ -415,38 +410,26 @@ export const PARCEIROS = [
   },
 ]
 
-export const HISTORICO_INICIAL = [
-  { id: 'h1', tipo: 'ganho', titulo: 'Compra na Sua Coxinha', detalhe: 'Cajamar · 12 nov, 14:32', pontos: 120, valor: 5980, data: '2026-11-12' },
-  { id: 'h2', tipo: 'bonus', titulo: 'Missão Dourada concluída', detalhe: 'Indique um amigo · 10 nov', pontos: 200, data: '2026-11-10' },
-  { id: 'h3', tipo: 'resgate', titulo: 'Resgate de recompensa', detalhe: 'Coxinha G · 08 nov', pontos: -300, data: '2026-11-08' },
-  { id: 'h4', tipo: 'ganho', titulo: 'Compra na Sua Coxinha', detalhe: 'Jundiaí · 05 nov, 19:08', pontos: 86, valor: 4300, data: '2026-11-05' },
-  { id: 'h5', tipo: 'expirado', titulo: 'Pontos expirados', detalhe: 'Validade de 12 meses · 01 nov', pontos: -45, data: '2026-11-01' },
-  { id: 'h6', tipo: 'bonus', titulo: 'Bônus de aniversário', detalhe: 'Pontos em dobro no mês · 22 out', pontos: 240, data: '2026-10-22' },
-  { id: 'h7', tipo: 'ganho', titulo: 'Compra na Sua Coxinha', detalhe: 'Cajamar · 18 out, 12:40', pontos: 104, valor: 5200, data: '2026-10-18' },
-  { id: 'h8', tipo: 'ganho', titulo: 'Compra na Sua Coxinha', detalhe: 'Cajamar · 09 out, 18:15', pontos: 64, valor: 3200, data: '2026-10-09' },
-]
+// O cliente novo começa sem extrato, sem avisos e com tudo zerado — isto é o
+// molde usado quando o documento dele é criado no Firestore. Os pontos passam
+// a existir só quando uma compra é identificada no caixa.
 
-export const NOTIFICACOES_INICIAIS = [
-  { id: 'n1', icone: 'brilho', titulo: 'Você ganhou 200 Pontos Dourados', texto: 'Missão “Indique um amigo” concluída — a Ana entrou no clube.', tempo: 'há 2 h', nova: true },
-  { id: 'n2', icone: 'presente', titulo: 'Uma nova recompensa está disponível', texto: 'Churros Gourmet entrou no catálogo por 260 pontos.', tempo: 'há 5 h', nova: true },
-  { id: 'n3', icone: 'relogio', titulo: 'Seus pontos expiram em 7 dias', texto: '90 Pontos Dourados vencem em 19 de novembro.', tempo: 'ontem', nova: false },
-  { id: 'n4', icone: 'tendencia', titulo: 'Você está a 320 pontos do Diamante', texto: 'Mais duas compras e o próximo nível é seu.', tempo: '2 dias', nova: false },
-  { id: 'n5', icone: 'alvo', titulo: 'Você desbloqueou uma Missão Dourada', texto: '“Experimente um sabor novo” vale 80 pontos.', tempo: '4 dias', nova: false },
-]
-
-export const USUARIO_INICIAL = {
-  nome: 'Marcelo Jordão',
-  primeiroNome: 'Marcelo',
-  telefone: '(11) 97181-3986',
-  email: 'marcelinhojordao07@gmail.com',
-  cpf: '123.456.789-00',
-  nascimento: '07/04/1996',
-  unidade: 'cajamar',
-  membroDesde: 'out/2025',
-  codigo: 'PD-4417-0982',
-  saldo: 1280,
-  pendentes: 180,
-  aExpirar: 90,
-  acumulado: 4680,
-  resgates: 12,
+export const USUARIO_VAZIO = {
+  nome: '',
+  primeiroNome: '',
+  telefone: '',
+  telefoneE164: '',
+  email: '',
+  cpf: '',
+  nascimento: '',
+  unidade: UNIDADES[0].id,
+  membroDesde: '',
+  codigo: '',
+  foto: '',
+  saldo: 0,
+  pendentes: 0,
+  aExpirar: 0,
+  acumulado: 0,
+  resgates: 0,
+  cadastroCompleto: false,
 }

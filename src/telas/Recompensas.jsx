@@ -81,8 +81,8 @@ export function RecompensaDetalhe({ id }) {
   const podeResgatar = usuario.saldo >= recompensa.pontos
   const faltam = recompensa.pontos - usuario.saldo
 
-  const confirmar = () => {
-    const voucher = resgatar(recompensa)
+  const confirmar = async () => {
+    const voucher = await resgatar(recompensa)
     setConfirmando(false)
     if (voucher) ir(`/celebracao/resgate?voucher=${voucher.id}`, { substituir: true })
   }

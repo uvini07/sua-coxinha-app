@@ -91,7 +91,7 @@ export function Perfil() {
       </section>
 
       <div className="px mt24" style={{ paddingBottom: 16 }}>
-        <Botao estilo="fantasma" icone="sair" onClick={() => { sair(); ir('/entrar', { substituir: true }) }}>
+        <Botao estilo="fantasma" icone="sair" onClick={async () => { await sair(); ir('/entrar', { substituir: true }) }}>
           Sair da conta
         </Botao>
       </div>
@@ -182,18 +182,19 @@ export function Configuracoes() {
         <div className="caixa caixa--nota">
           <Icone nome="info" tamanho={17} cor="var(--texto-sutil)" />
           <span className="t-peq c-sutil cresce">
-            Demonstração: os dados ficam só neste aparelho. Reiniciar limpa saldo, vouchers e histórico.
+            Seus dados ficam na sua conta do clube, não no aparelho — você entra em qualquer celular e encontra o
+            mesmo saldo. Reiniciar apaga saldo, vouchers e histórico desta conta, sem desfazer.
           </span>
         </div>
         <Botao
           estilo="superficie"
           tamanho="p"
-          onClick={() => {
-            reiniciar()
-            ir('/', { substituir: true })
+          onClick={async () => {
+            await reiniciar()
+            ir('/home', { substituir: true })
           }}
         >
-          Reiniciar demonstração
+          Zerar minha conta
         </Botao>
         <span className="t-peq c-sutil centro">Pontos Dourados · versão 0.1.0</span>
       </div>

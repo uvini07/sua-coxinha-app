@@ -3,7 +3,7 @@
 // estático é revalidado em segundo plano. O que importa aqui é o QR Code
 // funcionar dentro da loja mesmo sem sinal.
 
-const VERSAO = 'pd-v1'
+const VERSAO = 'pd-v2'
 const CASCA = `casca-${VERSAO}`
 const CONTEUDO = `conteudo-${VERSAO}`
 

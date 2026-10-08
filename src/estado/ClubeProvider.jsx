@@ -1,38 +1,50 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ClubeContexto } from './clubeContexto.js'
 import {
-  HISTORICO_INICIAL,
   MISSOES,
-  NOTIFICACOES_INICIAIS,
   PONTOS_POR_REAL,
   RECOMPENSAS,
-  USUARIO_INICIAL,
+  USUARIO_VAZIO,
   nivelDe,
 } from '../dados/clube.js'
+import {
+  concluirRedirecionamento,
+  confirmarCodigo as confirmarCodigoSMS,
+  entrarComGoogle as loginGoogle,
+  enviarCodigo as enviarCodigoSMS,
+  limparVerificador,
+  mensagemDeErro,
+  observarSessao,
+  sairDaConta,
+} from '../firebase/autenticacao.js'
+import {
+  avancarMissaoNoBanco,
+  creditarCompra,
+  garantirPerfil,
+  marcarNotificacoesLidas,
+  marcarVoucherUsado,
+  observarColecao,
+  observarPerfil,
+  resgatarRecompensa,
+  salvarPerfil,
+  zerarConta,
+} from '../firebase/clube.js'
+import { iniciarAnalytics } from '../firebase/app.js'
 
-// Enquanto não existe backend, o estado do clube mora aqui e é gravado no
-// localStorage. Quando a API entrar, só estas funções mudam — as telas não.
+// O estado do clube vem do Firebase: a sessão do Authentication e o documento
+// do cliente no Firestore, ouvidos em tempo real. As telas continuam vendo a
+// mesma forma de dados que antes — quem traduz é este arquivo.
+//
+// A única coisa que fica no aparelho é se o onboarding já foi visto, porque
+// isso é anterior ao login e não pertence a nenhuma conta.
 
-const CHAVE = 'pontos-dourados:v1'
+const CHAVE_ONBOARDING = 'pontos-dourados:onboarding'
 
-const estadoInicial = () => ({
-  autenticado: false,
-  onboardingVisto: false,
-  usuario: USUARIO_INICIAL,
-  historico: HISTORICO_INICIAL,
-  missoes: MISSOES.map((m) => ({ id: m.id, feito: m.feito, concluida: !!m.concluida })),
-  vouchers: [],
-  notificacoes: NOTIFICACOES_INICIAIS,
-})
-
-function ler() {
+const lerOnboarding = () => {
   try {
-    const bruto = localStorage.getItem(CHAVE)
-    if (!bruto) return estadoInicial()
-    return { ...estadoInicial(), ...JSON.parse(bruto) }
+    return localStorage.getItem(CHAVE_ONBOARDING) === '1'
   } catch {
-    // Modo privado ou storage bloqueado: o app funciona igual, só não lembra.
-    return estadoInicial()
+    return false
   }
 }
 
@@ -42,184 +54,363 @@ const dinheiro = (centavos) =>
 const agora = () =>
   new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '')
 
-// Data ISO curta, usada para agrupar o extrato por mês.
-const hoje = () => new Date().toISOString().slice(0, 10)
-
 const codigoVoucher = () => {
   const bloco = () =>
     Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')
   return `PD-${bloco()}-${bloco()}`
 }
 
+// Timestamp do Firestore → o que a tela espera. Enquanto a escrita não volta
+// do servidor, `serverTimestamp()` chega como null; aí vale o agora.
+const paraData = (ts) => (ts?.toDate ? ts.toDate() : ts ? new Date(ts) : new Date())
+
+// "out/2025" — montado à mão porque o `toLocaleDateString` pt-BR devolve
+// "out. de 2025", e tirar o ponto e o "de" com replace deixa espaço sobrando.
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+const mesAno = (ts) => {
+  const d = paraData(ts)
+  return `${MESES_CURTOS[d.getMonth()]}/${d.getFullYear()}`
+}
+
+const diaISO = (ts) => paraData(ts).toISOString().slice(0, 10)
+
+// "há 2 h", "ontem", "4 dias" — o formato que a lista de notificações usa.
+function tempoRelativo(ts) {
+  const minutos = Math.max(0, Math.round((Date.now() - paraData(ts).getTime()) / 60000))
+  if (minutos < 2) return 'agora'
+  if (minutos < 60) return `há ${minutos} min`
+  const horas = Math.round(minutos / 60)
+  if (horas < 24) return `há ${horas} h`
+  const dias = Math.round(horas / 24)
+  if (dias === 1) return 'ontem'
+  return `${dias} dias`
+}
+
 export function ClubeProvider({ children }) {
-  const [estado, setEstado] = useState(ler)
+  const [sessao, setSessao] = useState(undefined) // undefined = ainda verificando
+  const [perfil, setPerfil] = useState(null)
+  const [historico, setHistorico] = useState([])
+  const [vouchers, setVouchers] = useState([])
+  const [notificacoes, setNotificacoes] = useState([])
+  const [onboardingVisto, setOnboardingVisto] = useState(lerOnboarding)
+  const [erro, setErro] = useState('')
+  const [ocupado, setOcupado] = useState(false)
+
+  // O objeto que confirma o SMS não é serializável, então vive em ref.
+  const confirmacaoSMS = useRef(null)
+  const [telefoneEmVerificacao, setTelefoneEmVerificacao] = useState('')
+
+  // A tela de notificações marca tudo como lido na saída
+  // (`useEffect(() => () => lerNotificacoes(), ...)`). Para isso a função
+  // precisa ser estável: se ela mudasse a cada notificação nova, o cleanup
+  // rodaria com a tela ainda aberta e o destaque dourado nunca apareceria.
+  const notificacoesRef = useRef([])
+  notificacoesRef.current = notificacoes
+
+  // --- Sessão --------------------------------------------------------------
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CHAVE, JSON.stringify(estado))
-    } catch {
-      /* sem storage: segue sem lembrar */
+    iniciarAnalytics()
+    concluirRedirecionamento()
+    return observarSessao(async (user) => {
+      if (!user) {
+        setSessao(null)
+        setPerfil(null)
+        setHistorico([])
+        setVouchers([])
+        setNotificacoes([])
+        return
+      }
+      try {
+        // Cria o documento zerado no primeiro login desta conta.
+        await garantirPerfil(user)
+      } catch (e) {
+        setErro(mensagemDeErro(e))
+      }
+      setSessao(user)
+    })
+  }, [])
+
+  // --- Dados do cliente, em tempo real ------------------------------------
+
+  useEffect(() => {
+    if (!sessao) return undefined
+    const aoFalhar = (e) => setErro(mensagemDeErro(e))
+    const cancelar = [
+      observarPerfil(sessao.uid, setPerfil, aoFalhar),
+      observarColecao(sessao.uid, 'historico', setHistorico, aoFalhar),
+      observarColecao(sessao.uid, 'vouchers', setVouchers, aoFalhar),
+      observarColecao(sessao.uid, 'notificacoes', setNotificacoes, aoFalhar),
+    ]
+    return () => cancelar.forEach((c) => c())
+  }, [sessao])
+
+  // --- Formato que as telas consomem --------------------------------------
+
+  const usuario = useMemo(() => {
+    if (!perfil) return USUARIO_VAZIO
+    return {
+      ...USUARIO_VAZIO,
+      ...perfil,
+      membroDesde: perfil.criadoEm ? mesAno(perfil.criadoEm) : '—',
     }
-  }, [estado])
+  }, [perfil])
 
-  const nivel = useMemo(() => nivelDe(estado.usuario.acumulado), [estado.usuario.acumulado])
+  const nivel = useMemo(() => nivelDe(usuario.acumulado), [usuario.acumulado])
 
-  const missoes = useMemo(
+  const missoes = useMemo(() => {
+    const salvas = perfil?.missoes || {}
+    return MISSOES.map((base) => {
+      const salvo = salvas[base.id] || {}
+      const feito = salvo.feito || 0
+      return {
+        ...base,
+        feito,
+        concluida: !!salvo.concluida,
+        progresso: Math.min(1, feito / base.meta),
+      }
+    })
+  }, [perfil])
+
+  // O extrato guarda só o essencial; a data legível é montada aqui para não
+  // congelar formato de texto no banco.
+  const historicoFormatado = useMemo(
     () =>
-      MISSOES.map((base) => {
-        const salvo = estado.missoes.find((m) => m.id === base.id) || {}
-        const feito = salvo.feito ?? base.feito
+      historico.map((h) => {
+        const dia = paraData(h.criadoEm)
+          .toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+          .replace('.', '')
         return {
-          ...base,
-          feito,
-          concluida: salvo.concluida ?? !!base.concluida,
-          progresso: Math.min(1, feito / base.meta),
+          ...h,
+          data: h.data || diaISO(h.criadoEm),
+          detalhe: h.detalhe?.includes('·') ? h.detalhe : [h.detalhe, dia].filter(Boolean).join(' · '),
         }
       }),
-    [estado.missoes],
+    [historico],
   )
 
-  const entrar = useCallback(() => setEstado((e) => ({ ...e, autenticado: true })), [])
-  const sair = useCallback(() => setEstado(() => ({ ...estadoInicial(), onboardingVisto: true })), [])
-  const concluirOnboarding = useCallback(() => setEstado((e) => ({ ...e, onboardingVisto: true })), [])
+  const notificacoesFormatadas = useMemo(
+    () => notificacoes.map((n) => ({ ...n, tempo: n.tempo || tempoRelativo(n.criadoEm) })),
+    [notificacoes],
+  )
+
+  // --- Login ---------------------------------------------------------------
+
+  const entrarComGoogle = useCallback(async () => {
+    setErro('')
+    setOcupado(true)
+    try {
+      await loginGoogle()
+      return true
+    } catch (e) {
+      setErro(mensagemDeErro(e))
+      return false
+    } finally {
+      setOcupado(false)
+    }
+  }, [])
+
+  const pedirCodigo = useCallback(async (telefone) => {
+    setErro('')
+    setOcupado(true)
+    try {
+      confirmacaoSMS.current = await enviarCodigoSMS(telefone)
+      setTelefoneEmVerificacao(telefone)
+      return true
+    } catch (e) {
+      setErro(mensagemDeErro(e))
+      return false
+    } finally {
+      setOcupado(false)
+    }
+  }, [])
+
+  const confirmarCodigo = useCallback(async (codigo) => {
+    if (!confirmacaoSMS.current) {
+      setErro('A verificação expirou. Peça um novo código.')
+      return false
+    }
+    setErro('')
+    setOcupado(true)
+    try {
+      await confirmarCodigoSMS(confirmacaoSMS.current, codigo)
+      confirmacaoSMS.current = null
+      return true
+    } catch (e) {
+      setErro(mensagemDeErro(e))
+      return false
+    } finally {
+      setOcupado(false)
+    }
+  }, [])
+
+  const sair = useCallback(async () => {
+    confirmacaoSMS.current = null
+    setTelefoneEmVerificacao('')
+    setErro('')
+    limparVerificador()
+    await sairDaConta()
+  }, [])
+
+  const concluirOnboarding = useCallback(() => {
+    try {
+      localStorage.setItem(CHAVE_ONBOARDING, '1')
+    } catch {
+      /* sem storage: o onboarding reaparece, o app funciona */
+    }
+    setOnboardingVisto(true)
+  }, [])
+
+  // --- Escritas ------------------------------------------------------------
 
   const atualizarPerfil = useCallback(
-    (campos) => setEstado((e) => ({ ...e, usuario: { ...e.usuario, ...campos } })),
-    [],
+    async (campos) => {
+      if (!sessao) return
+      try {
+        await salvarPerfil(sessao.uid, campos)
+      } catch (e) {
+        setErro(mensagemDeErro(e))
+      }
+    },
+    [sessao],
   )
 
-  const resgatar = useCallback((recompensa) => {
-    let voucher = null
-    setEstado((e) => {
-      if (e.usuario.saldo < recompensa.pontos) return e
-      voucher = {
-        id: `v-${Date.now()}`,
-        recompensaId: recompensa.id,
-        nome: recompensa.nome,
-        descricao: recompensa.descricao,
-        imagem: recompensa.imagem,
-        pontos: recompensa.pontos,
-        codigo: codigoVoucher(),
-        estado: 'disponivel',
-        validade: 'Vence em 7 dias',
-        criadoEm: Date.now(),
+  // Fecha o cadastro: grava os dados da etapa 2 e libera o app.
+  const concluirCadastro = useCallback(
+    async ({ nome, nascimento, unidade, novidades }) => {
+      if (!sessao) return false
+      try {
+        await salvarPerfil(sessao.uid, {
+          nome: nome.trim(),
+          primeiroNome: nome.trim().split(' ')[0],
+          nascimento,
+          unidade,
+          aceiteTermos: true,
+          aceiteNovidades: !!novidades,
+          cadastroCompleto: true,
+        })
+        return true
+      } catch (e) {
+        setErro(mensagemDeErro(e))
+        return false
       }
-      return {
-        ...e,
-        usuario: { ...e.usuario, saldo: e.usuario.saldo - recompensa.pontos, resgates: e.usuario.resgates + 1 },
-        vouchers: [voucher, ...e.vouchers],
-        historico: [
-          {
-            id: `h-${Date.now()}`,
-            tipo: 'resgate',
-            titulo: 'Resgate de recompensa',
-            detalhe: `${recompensa.nome} · ${agora()}`,
-            pontos: -recompensa.pontos,
-            data: hoje(),
-          },
-          ...e.historico,
-        ],
-      }
-    })
-    return voucher
-  }, [])
+    },
+    [sessao],
+  )
 
-  // Simula uma compra identificada no caixa. É o gancho que a integração com o
-  // PDV (ou o app do operador) vai substituir.
-  const registrarCompra = useCallback((valorCentavos, unidade = 'Cajamar') => {
-    const pontos = Math.round((valorCentavos / 100) * PONTOS_POR_REAL)
-    setEstado((e) => ({
-      ...e,
-      usuario: {
-        ...e.usuario,
-        saldo: e.usuario.saldo + pontos,
-        acumulado: e.usuario.acumulado + pontos,
-      },
-      historico: [
-        {
-          id: `h-${Date.now()}`,
-          tipo: 'ganho',
-          titulo: 'Compra na Sua Coxinha',
-          detalhe: `${unidade} · ${agora()}`,
+  const resgatar = useCallback(
+    async (recompensa) => {
+      if (!sessao) return null
+      try {
+        return await resgatarRecompensa(sessao.uid, recompensa, codigoVoucher())
+      } catch (e) {
+        setErro(mensagemDeErro(e))
+        return null
+      }
+    },
+    [sessao],
+  )
+
+  // Gancho da integração com o PDV: hoje chamado pelo botão de simulação da
+  // tela do QR, amanhã por uma Cloud Function disparada pelo caixa.
+  const registrarCompra = useCallback(
+    async (valorCentavos, unidade = 'Cajamar') => {
+      if (!sessao) return 0
+      const pontos = Math.round((valorCentavos / 100) * PONTOS_POR_REAL)
+      try {
+        await creditarCompra(sessao.uid, {
           pontos,
           valor: valorCentavos,
-          data: hoje(),
-        },
-        ...e.historico,
-      ],
-    }))
-    return pontos
-  }, [])
-
-  const avancarMissao = useCallback((id) => {
-    setEstado((e) => {
-      const base = MISSOES.find((m) => m.id === id)
-      if (!base) return e
-      const atual = e.missoes.find((m) => m.id === id) || { feito: base.feito, concluida: false }
-      if (atual.concluida) return e
-      const feito = Math.min(base.meta, atual.feito + 1)
-      const concluida = feito >= base.meta
-      return {
-        ...e,
-        missoes: e.missoes.map((m) => (m.id === id ? { ...m, feito, concluida } : m)),
-        usuario: concluida
-          ? {
-              ...e.usuario,
-              saldo: e.usuario.saldo + base.recompensa,
-              acumulado: e.usuario.acumulado + base.recompensa,
-            }
-          : e.usuario,
-        historico: concluida
-          ? [
-              {
-                id: `h-${Date.now()}`,
-                tipo: 'bonus',
-                titulo: 'Missão Dourada concluída',
-                detalhe: `${base.titulo} · ${agora()}`,
-                pontos: base.recompensa,
-                data: hoje(),
-              },
-              ...e.historico,
-            ]
-          : e.historico,
+          unidade,
+          detalhe: `${unidade} · ${agora()}`,
+        })
+        return pontos
+      } catch (e) {
+        setErro(mensagemDeErro(e))
+        return 0
       }
-    })
-  }, [])
+    },
+    [sessao],
+  )
+
+  const avancarMissao = useCallback(
+    async (id) => {
+      if (!sessao) return null
+      const base = MISSOES.find((m) => m.id === id)
+      if (!base) return null
+      try {
+        return await avancarMissaoNoBanco(sessao.uid, base)
+      } catch (e) {
+        setErro(mensagemDeErro(e))
+        return null
+      }
+    },
+    [sessao],
+  )
 
   const usarVoucher = useCallback(
-    (id) =>
-      setEstado((e) => ({
-        ...e,
-        vouchers: e.vouchers.map((v) => (v.id === id ? { ...v, estado: 'utilizado' } : v)),
-      })),
-    [],
+    async (id) => {
+      if (!sessao) return
+      try {
+        await marcarVoucherUsado(sessao.uid, id)
+      } catch (e) {
+        setErro(mensagemDeErro(e))
+      }
+    },
+    [sessao],
   )
 
-  const lerNotificacoes = useCallback(
-    () => setEstado((e) => ({ ...e, notificacoes: e.notificacoes.map((n) => ({ ...n, nova: false })) })),
-    [],
-  )
-
-  const reiniciar = useCallback(() => {
+  const lerNotificacoes = useCallback(async () => {
+    if (!sessao) return
+    const novas = notificacoesRef.current.filter((n) => n.nova).map((n) => n.id)
+    if (!novas.length) return
     try {
-      localStorage.removeItem(CHAVE)
-    } catch {
-      /* ignora */
+      await marcarNotificacoesLidas(sessao.uid, novas)
+    } catch (e) {
+      setErro(mensagemDeErro(e))
     }
-    setEstado(estadoInicial())
-  }, [])
+  }, [sessao])
+
+  const reiniciar = useCallback(async () => {
+    if (!sessao) return
+    try {
+      await zerarConta(sessao.uid)
+    } catch (e) {
+      setErro(mensagemDeErro(e))
+    }
+  }, [sessao])
 
   const valor = useMemo(
     () => ({
-      ...estado,
+      // sessão
+      carregando: sessao === undefined,
+      autenticado: !!sessao,
+      uid: sessao?.uid || null,
+      cadastroCompleto: !!perfil?.cadastroCompleto,
+      onboardingVisto,
+      erro,
+      ocupado,
+      limparErro: () => setErro(''),
+      telefoneEmVerificacao,
+
+      // dados
+      usuario,
       nivel,
       missoes,
       recompensas: RECOMPENSAS,
-      naoLidas: estado.notificacoes.filter((n) => n.nova).length,
+      historico: historicoFormatado,
+      vouchers,
+      notificacoes: notificacoesFormatadas,
+      naoLidas: notificacoesFormatadas.filter((n) => n.nova).length,
       dinheiro,
-      entrar,
+
+      // ações
+      entrarComGoogle,
+      pedirCodigo,
+      confirmarCodigo,
       sair,
       concluirOnboarding,
+      concluirCadastro,
       atualizarPerfil,
       resgatar,
       registrarCompra,
@@ -229,12 +420,24 @@ export function ClubeProvider({ children }) {
       reiniciar,
     }),
     [
-      estado,
+      sessao,
+      perfil,
+      onboardingVisto,
+      erro,
+      ocupado,
+      telefoneEmVerificacao,
+      usuario,
       nivel,
       missoes,
-      entrar,
+      historicoFormatado,
+      vouchers,
+      notificacoesFormatadas,
+      entrarComGoogle,
+      pedirCodigo,
+      confirmarCodigo,
       sair,
       concluirOnboarding,
+      concluirCadastro,
       atualizarPerfil,
       resgatar,
       registrarCompra,

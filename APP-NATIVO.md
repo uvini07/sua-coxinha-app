@@ -52,13 +52,41 @@ existe link de download para iPhone, porque a Apple exige certificado de conta p
 qualquer app rodar num aparelho. Com a conta, o caminho é TestFlight e o workflow ganha
 os passos de assinatura.
 
-**Para o login funcionar nos builds**, cadastre os arquivos do Firebase como secrets do
-repositório (Settings → Secrets and variables → Actions):
+**Para o login funcionar nos builds**, cadastre três secrets do repositório
+(Settings → Secrets and variables → Actions):
 
 | Secret | De onde vem | Sem ele |
 |---|---|---|
 | `GOOGLE_SERVICES_JSON` | Firebase → app Android | o APK abre, o login falha |
+| `ANDROID_DEBUG_KEYSTORE_BASE64` | a chave de teste, em base64 | a SHA-1 muda a cada build e o login quebra sozinho |
 | `GOOGLE_SERVICE_INFO_PLIST` | Firebase → app iOS | compila, o login falha |
+
+### Por que a chave de assinatura precisa ser fixa
+
+O Google só aceita o login se a impressão digital (SHA-1) da chave que assinou o app
+estiver cadastrada no Firebase. Num build local isso é estável, porque a chave de
+depuração mora no seu computador. **Num servidor de CI, não:** sem uma chave fornecida,
+o Gradle gera uma nova a cada execução, a SHA-1 muda e o login passa a falhar sem ninguém
+ter mexido em nada.
+
+Por isso o workflow carrega a chave de um secret. Para gerar a sua:
+
+```bash
+keytool -genkeypair -v \
+  -keystore pd-debug.keystore -storetype PKCS12 \
+  -alias androiddebugkey -storepass android -keypass android \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=Pontos Dourados Teste, O=Sua Coxinha, L=Cajamar, ST=SP, C=BR"
+
+base64 -w0 pd-debug.keystore    # cole a saída no secret
+```
+
+O alias e a senha seguem a convenção do Android (`androiddebugkey` / `android`), que é
+o que faz o Gradle usar o arquivo sem configuração extra. **É chave de teste**: a versão
+da loja usa outra, guardada com cuidado, e a SHA-1 que vale lá é a do Play App Signing.
+
+A cada build o workflow imprime a SHA-1 do APK no resumo da execução, já formatada para
+colar no Firebase — não é preciso descobrir por conta própria.
 
 ## O que você precisa antes de começar
 

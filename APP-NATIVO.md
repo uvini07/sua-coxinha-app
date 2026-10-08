@@ -32,7 +32,7 @@ sozinho na conta anterior, sem passar pelo seletor.
 | | Android | iOS |
 |---|---|---|
 | Máquina | Windows, Mac ou Linux | **Mac** (Xcode não roda em outro sistema) |
-| Ferramenta | Android Studio | Xcode + CocoaPods |
+| Ferramenta | Android Studio | Xcode |
 | Conta | Google Play, US$ 25 uma vez | Apple Developer, US$ 99/ano |
 
 ## Android
@@ -71,6 +71,10 @@ No Android Studio: Run para instalar no aparelho, Build → Generate Signed Bund
 `.aab` que sobe na loja.
 
 ## iOS
+
+> O Capacitor 8 resolve as dependências nativas por **Swift Package Manager**: todo
+> plugin traz um `Package.swift`. Não há CocoaPods, nem `Podfile`, nem `pod install`
+> neste projeto — tutorial que mande rodar `pod install` é de versão anterior.
 
 **1. Registre o app no Firebase** (Adicionar app → iOS), mesmo bundle ID
 `br.com.suacoxinha.pontosdourados`. Baixe o `GoogleService-Info.plist` e arraste para

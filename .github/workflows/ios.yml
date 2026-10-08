@@ -61,17 +61,23 @@ jobs:
       - name: Sincronizar web → nativo
         run: npx cap sync ios
 
-      - name: Instalar os pods
-        run: pod install
-        working-directory: ios/App
-
+      # O Capacitor 8 resolve as dependências nativas por Swift Package Manager
+      # (todo plugin traz um Package.swift), então não há CocoaPods nem Podfile
+      # neste projeto. O xcworkspace só existe em projeto que usa pods; daí a
+      # escolha entre workspace e project abaixo.
+      #
       # CODE_SIGNING_ALLOWED=NO é o que permite compilar sem conta Apple. É
       # também o motivo de o resultado só rodar em simulador.
       - name: Compilar
         working-directory: ios/App
         run: |
-          xcodebuild \
-            -workspace App.xcworkspace \
+          if [ -d App.xcworkspace ]; then
+            alvo=(-workspace App.xcworkspace)
+          else
+            alvo=(-project App.xcodeproj)
+          fi
+          echo "Compilando com: ${alvo[*]}"
+          xcodebuild "${alvo[@]}" \
             -scheme App \
             -configuration Debug \
             -sdk iphonesimulator \

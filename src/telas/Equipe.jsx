@@ -2,29 +2,39 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRota } from '../rotas/useRota.js'
 import { useClube } from '../estado/clubeContexto.js'
 import { AppBar, Tela } from '../componentes/Tela.jsx'
-import { Botao, Brilho, Chip, Divisor, Selo, Vazio } from '../componentes/primitivos.jsx'
+import { BarraProgresso, Botao, Brilho, Chip, Divisor, Selo, Vazio } from '../componentes/primitivos.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { LeitorQR } from '../componentes/LeitorQR.jsx'
 import { RECOMPENSAS, nivelDe } from '../dados/clube.js'
 import { mensagemDeErro, paraE164 } from '../firebase/autenticacao.js'
 import {
+  MODELOS_MISSAO,
   REGRAS_PADRAO,
+  TIPOS_MISSAO,
+  apagarMissao,
   atualizarMembro,
   buscarCliente,
   buscarClientePorTelefone,
   buscarVoucher,
   cadastrarMembro,
   diaDeHoje,
+  dispararMissao,
+  encerrarMissao,
   lerQR,
+  metaDaLoja,
+  missaoVencida,
   normalizarEmail,
   observarEquipe,
   observarLancamentos,
   observarLojas,
+  observarMissoesEquipe,
   pontosDaCompra,
+  progressoNaMissao,
   registrarCompraNoCaixa,
   removerMembro,
   salvarCatalogo,
   salvarLoja,
+  salvarMetaDaLoja,
   salvarRegras,
   validarVoucherNoCaixa,
   vouchersDisponiveis,
@@ -36,7 +46,8 @@ import {
 // inscreve como equipe. O que cada papel vê:
 //
 //   funcionário  caixa (compra e voucher), a própria meta, ranking da loja
-//   franqueado   + pessoas da loja, movimento da loja inteira
+//   franqueado   + pessoas da loja, movimento da loja inteira, metas e
+//                  missões da equipe da loja
 //   admin        + seletor de loja, regras do clube, catálogo, lojas
 //
 // Esconder um botão aqui é só conforto: quem garante cada permissão são as
@@ -202,6 +213,8 @@ export function PainelEquipe() {
         </section>
       )}
 
+      {membro && papel !== 'admin' && <MinhasMissoes membro={membro} loja={lojaOperacao} />}
+
       <section className="px mt32">
         <span className="t-overline c-sutil">Ranking da loja</span>
         <Aviso texto={erro} />
@@ -236,6 +249,8 @@ export function PainelEquipe() {
             <>
               <Divisor recuo={32} />
               <ItemEquipe icone="pessoas" rotulo="Pessoas da equipe" onClick={() => ir('/equipe/pessoas')} />
+              <Divisor recuo={32} />
+              <ItemEquipe icone="alvo" rotulo="Metas e missões da equipe" onClick={() => ir('/equipe/metas')} />
             </>
           )}
           {papel === 'admin' && (
@@ -264,6 +279,61 @@ export function PainelEquipe() {
         </Botao>
       </div>
     </Tela>
+  )
+}
+
+// Missões ativas da loja, com o progresso de quem está logado.
+function MinhasMissoes({ membro, loja }) {
+  const [missoes, setMissoes] = useState([])
+  useEffect(() => {
+    if (!loja) return undefined
+    return observarMissoesEquipe(loja, setMissoes, () => setMissoes([]))
+  }, [loja])
+
+  const ativas = missoes.filter((m) => m.ativa && !missaoVencida(m))
+  if (!ativas.length) return null
+  return (
+    <section className="px mt32">
+      <span className="t-overline c-sutil">Missões da equipe</span>
+      <div className="pilha g12 mt8">
+        {ativas.map((m) => (
+          <CartaoMissao key={m.id} missao={m} progresso={progressoNaMissao(m, membro)} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+const quantidadeDaMissao = (tipo, n) => (tipo === 'vendas' ? reais(n) : `${n} ${TIPOS_MISSAO[tipo].unidade}`)
+
+const prazoLegivel = (dia) => (dia ? dia.split('-').reverse().join('/') : '')
+
+function CartaoMissao({ missao, progresso, children }) {
+  return (
+    <div className="caixa pilha g8">
+      <div className="linha-h entre g8">
+        <strong className="t-h4">{missao.titulo}</strong>
+        {progresso?.concluida && (
+          <Selo tom="ouro" icone="check">
+            Concluída
+          </Selo>
+        )}
+      </div>
+      <span className="t-peq c-sutil">
+        Meta: {quantidadeDaMissao(missao.tipo, missao.alvo)}
+        {missao.prazo ? ` · até ${prazoLegivel(missao.prazo)}` : ''}
+        {missao.premio ? ` · Prêmio: ${missao.premio}` : ''}
+      </span>
+      {progresso && (
+        <>
+          <BarraProgresso valor={progresso.fracao} altura={9} />
+          <span className="t-peq c-secundario">
+            {quantidadeDaMissao(missao.tipo, progresso.feito)} de {quantidadeDaMissao(missao.tipo, missao.alvo)}
+          </span>
+        </>
+      )}
+      {children}
+    </div>
   )
 }
 
@@ -424,6 +494,7 @@ export function CaixaCompra() {
         loja: lojaOperacao,
         lojaNome: nomeDaLoja(unidades, lojaOperacao),
         regras,
+        meta: metaDaLoja(unidades, lojaOperacao, regras),
         operador,
       })
       setFeito({ ...r, valor: centavos, nome: cliente.nome })
@@ -507,7 +578,7 @@ export function CaixaCompra() {
 
 export function CaixaVoucher() {
   const { ir } = useRota()
-  const { uid, regras, lojaOperacao } = useClube()
+  const { uid, regras, lojaOperacao, unidades } = useClube()
   const operador = useOperador()
   const [cliente, setCliente] = useState(null)
   const [disponiveis, setDisponiveis] = useState(null)
@@ -549,7 +620,13 @@ export function CaixaVoucher() {
     setErro('')
     setEnviando(true)
     try {
-      const r = await validarVoucherNoCaixa({ cliente, voucher, loja: lojaOperacao, regras, operador })
+      const r = await validarVoucherNoCaixa({
+        cliente,
+        voucher,
+        loja: lojaOperacao,
+        meta: metaDaLoja(unidades, lojaOperacao, regras),
+        operador,
+      })
       setFeito({ ...r, nome: voucher.nome })
     } catch (e) {
       setErro(mensagemDeErro(e))
@@ -901,13 +978,237 @@ export function Pessoas() {
   )
 }
 
+// --- Metas e missões da equipe (franqueado e admin) -------------------------
+
+const CAMPOS_META = [
+  ['pontosPorReal', 'Pontos de meta por R$ 1,00 vendido', 'Quanto o funcionário ganha a cada real registrado no caixa.'],
+  ['pontosPorVoucher', 'Pontos de meta por voucher validado', 'Quanto o funcionário ganha a cada voucher que dá baixa.'],
+]
+
+export function MetasEquipe() {
+  const { email, regras, unidades, lojaOperacao } = useClube()
+  const meta = metaDaLoja(unidades, lojaOperacao, regras)
+  const [form, setForm] = useState(null)
+  const [equipe, setEquipe] = useState([])
+  const [missoes, setMissoes] = useState([])
+  const [rascunho, setRascunho] = useState(null)
+  const [erro, setErro] = useState('')
+  const [ok, setOk] = useState('')
+
+  // Recomeça o formulário ao trocar de loja (o admin troca no seletor).
+  useEffect(() => {
+    setForm({ pontosPorReal: String(meta.pontosPorReal), pontosPorVoucher: String(meta.pontosPorVoucher) })
+  }, [lojaOperacao, meta.pontosPorReal, meta.pontosPorVoucher])
+
+  useEffect(() => {
+    if (!lojaOperacao) return undefined
+    const parar = [
+      observarEquipe(lojaOperacao, setEquipe, (e) => setErro(mensagemDeErro(e))),
+      observarMissoesEquipe(lojaOperacao, setMissoes, (e) => setErro(mensagemDeErro(e))),
+    ]
+    return () => parar.forEach((p) => p())
+  }, [lojaOperacao])
+
+  const executar = async (fn, mensagem) => {
+    setErro('')
+    setOk('')
+    try {
+      await fn()
+      if (mensagem) setOk(mensagem)
+    } catch (e) {
+      setErro(mensagemDeErro(e))
+    }
+  }
+
+  const inteiro = (v) => Math.max(0, Math.floor(Number(v) || 0))
+
+  const salvarMetas = () =>
+    executar(
+      () =>
+        salvarMetaDaLoja(lojaOperacao, {
+          pontosPorReal: inteiro(form.pontosPorReal),
+          pontosPorVoucher: inteiro(form.pontosPorVoucher),
+        }),
+      'Metas salvas. Valem a partir do próximo lançamento desta loja.',
+    )
+
+  const novoRascunho = (modelo) =>
+    setRascunho({
+      modelo: modelo?.id || '',
+      titulo: modelo?.titulo || '',
+      tipo: modelo?.tipo || 'vouchers',
+      alvo: String(modelo ? (modelo.tipo === 'vendas' ? modelo.alvo / 100 : modelo.alvo) : ''),
+      premio: '',
+      prazo: '',
+    })
+
+  const alvoDoRascunho = rascunho
+    ? rascunho.tipo === 'vendas'
+      ? inteiro(rascunho.alvo) * 100
+      : inteiro(rascunho.alvo)
+    : 0
+
+  const disparar = () =>
+    executar(async () => {
+      await dispararMissao(
+        { loja: lojaOperacao, ...rascunho, alvo: alvoDoRascunho },
+        equipe,
+        email,
+      )
+      setRascunho(null)
+    }, 'Missão disparada. A equipe já vê no painel dela.')
+
+  const funcionarios = equipe.filter((m) => m.ativo && m.papel === 'funcionario')
+  const ativas = missoes.filter((m) => m.ativa && !missaoVencida(m))
+  const encerradas = missoes.filter((m) => !m.ativa || missaoVencida(m))
+
+  if (!form) return null
+
+  return (
+    <Tela>
+      <AppBar titulo="Metas e missões" />
+      <div className="px pilha g16" style={{ paddingBottom: 24 }}>
+        <SeletorLoja />
+        <Aviso texto={ok} tom="sucesso" />
+        <Aviso texto={erro} />
+
+        <span className="t-overline c-sutil">Metas da loja</span>
+        {CAMPOS_META.map(([chave, rotulo, dica]) => (
+          <Campo key={chave} rotulo={rotulo} dica={dica}>
+            <input
+              inputMode="numeric"
+              value={form[chave]}
+              onChange={(e) => setForm({ ...form, [chave]: e.target.value.replace(/\D/g, '') })}
+            />
+          </Campo>
+        ))}
+        <Botao onClick={salvarMetas}>Salvar metas</Botao>
+
+        <span className="t-overline c-sutil mt16">Missões ativas</span>
+        {ativas.length === 0 && <p className="t-peq c-sutil">Nenhuma missão rodando. Escolha uma pronta abaixo.</p>}
+        {ativas.map((m) => (
+          <CartaoMissao key={m.id} missao={m}>
+            {funcionarios.length === 0 && <span className="t-peq c-sutil">Nenhum funcionário ativo nesta loja.</span>}
+            {funcionarios.map((f) => {
+              const p = progressoNaMissao(m, f)
+              return (
+                <div key={f.id} className="pilha g4">
+                  <div className="linha-h entre">
+                    <span className="t-corpo">{f.nome}</span>
+                    <span className={`t-peq ${p.concluida ? 'c-ouro' : 'c-sutil'}`}>
+                      {p.concluida ? 'Concluiu' : `${quantidadeDaMissao(m.tipo, p.feito)}`}
+                    </span>
+                  </div>
+                  <BarraProgresso valor={p.fracao} altura={6} />
+                </div>
+              )
+            })}
+            <div className="linha-h g8 mt8">
+              <Botao estilo="fantasma" tamanho="p" largura="auto" onClick={() => executar(() => encerrarMissao(m.id))}>
+                Encerrar
+              </Botao>
+            </div>
+          </CartaoMissao>
+        ))}
+
+        <span className="t-overline c-sutil mt16">Missões prontas</span>
+        {rascunho ? (
+          <div className="caixa pilha g16">
+            <strong className="t-h4">{rascunho.modelo ? 'Disparar missão' : 'Missão personalizada'}</strong>
+            <Campo rotulo="Nome da missão">
+              <input
+                value={rascunho.titulo}
+                maxLength={60}
+                onChange={(e) => setRascunho({ ...rascunho, titulo: e.target.value })}
+                placeholder="Ex.: Semana dos vouchers"
+              />
+            </Campo>
+            <div className="pilha g8">
+              <span className="t-overline c-secundario">O que conta</span>
+              <div className="rolagem-h">
+                {Object.entries(TIPOS_MISSAO).map(([tipo, t]) => (
+                  <Chip key={tipo} ativo={rascunho.tipo === tipo} onClick={() => setRascunho({ ...rascunho, tipo })}>
+                    {t.rotulo}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+            <Campo rotulo={rascunho.tipo === 'vendas' ? 'Meta (R$)' : 'Meta (quantidade)'} dica="Cada funcionário precisa chegar nesse número.">
+              <input
+                inputMode="numeric"
+                value={rascunho.alvo}
+                onChange={(e) => setRascunho({ ...rascunho, alvo: e.target.value.replace(/\D/g, '') })}
+              />
+            </Campo>
+            <Campo rotulo="Prêmio (opcional)">
+              <input
+                value={rascunho.premio}
+                maxLength={80}
+                onChange={(e) => setRascunho({ ...rascunho, premio: e.target.value })}
+                placeholder="Ex.: folga extra, R$ 50, almoço"
+              />
+            </Campo>
+            <Campo rotulo="Prazo (opcional)">
+              <Icone nome="calendario" tamanho={19} cor="var(--ouro-500)" />
+              <input
+                type="date"
+                value={rascunho.prazo}
+                min={diaDeHoje()}
+                onChange={(e) => setRascunho({ ...rascunho, prazo: e.target.value })}
+              />
+            </Campo>
+            <Botao icone="raio" onClick={disparar} desabilitado={!rascunho.titulo.trim() || !alvoDoRascunho}>
+              Disparar para a equipe
+            </Botao>
+            <Botao estilo="fantasma" onClick={() => setRascunho(null)}>
+              Cancelar
+            </Botao>
+          </div>
+        ) : (
+          <>
+            {MODELOS_MISSAO.map((modelo) => (
+              <button key={modelo.id} type="button" className="caixa linha-h g12" onClick={() => novoRascunho(modelo)}>
+                <Icone nome="alvo" tamanho={22} cor="var(--ouro-500)" />
+                <span className="cresce pilha g4" style={{ textAlign: 'left' }}>
+                  <strong className="t-forte">{modelo.titulo}</strong>
+                  <span className="t-peq c-sutil">{quantidadeDaMissao(modelo.tipo, modelo.alvo)}</span>
+                </span>
+                <Icone nome="seta-dir" tamanho={17} cor="var(--neutro-500)" />
+              </button>
+            ))}
+            <Botao estilo="superficie" icone="mais" onClick={() => novoRascunho(null)}>
+              Criar missão personalizada
+            </Botao>
+          </>
+        )}
+
+        {encerradas.length > 0 && (
+          <>
+            <span className="t-overline c-sutil mt16">Encerradas</span>
+            {encerradas.map((m) => (
+              <CartaoMissao key={m.id} missao={m}>
+                <span className="t-peq c-sutil">
+                  {funcionarios.filter((f) => progressoNaMissao(m, f).concluida).length} de {funcionarios.length} concluíram
+                </span>
+                <div className="linha-h g8">
+                  <Botao estilo="fantasma" tamanho="p" largura="auto" onClick={() => executar(() => apagarMissao(m.id))}>
+                    Apagar
+                  </Botao>
+                </div>
+              </CartaoMissao>
+            ))}
+          </>
+        )}
+      </div>
+    </Tela>
+  )
+}
+
 // --- Regras do clube e catálogo (admin) --------------------------------------
 
 const CAMPOS_REGRAS = [
   ['pontosPorReal', 'Pontos do cliente por R$ 1,00', 'Quanto o cliente ganha a cada real gasto.'],
   ['valorMaximo', 'Teto por compra (R$)', 'Compra acima disso é recusada. Freio contra erro de digitação e fraude.'],
-  ['metaPontosPorReal', 'Meta da equipe: pontos por R$ 1,00 vendido', 'Quanto o funcionário ganha a cada real registrado.'],
-  ['metaPontosPorVoucher', 'Meta da equipe: pontos por voucher', 'Quanto o funcionário ganha a cada voucher validado.'],
 ]
 
 export function RegrasClube() {
@@ -945,8 +1246,10 @@ export function RegrasClube() {
     const novas = {
       pontosPorReal: inteiro(form.pontosPorReal),
       valorMaximo: inteiro(form.valorMaximo) * 100,
-      metaPontosPorReal: inteiro(form.metaPontosPorReal),
-      metaPontosPorVoucher: inteiro(form.metaPontosPorVoucher),
+      // As metas da equipe agora são de cada loja (tela Metas e missões);
+      // aqui só se preserva o padrão da rede, usado por loja sem meta própria.
+      metaPontosPorReal: regras.metaPontosPorReal,
+      metaPontosPorVoucher: regras.metaPontosPorVoucher,
     }
     if (!novas.pontosPorReal || !novas.valorMaximo) {
       setErro('Pontos por real e teto por compra precisam ser maiores que zero.')

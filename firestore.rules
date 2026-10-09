@@ -95,6 +95,25 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/config/regras).data;
     }
 
+    // Metas da equipe: cada loja pode ter as suas (o franqueado escolhe);
+    // sem elas, vale o padrão da rede em config/regras.
+    function metaDaLoja(loja) {
+      return get(/databases/$(database)/documents/lojas/$(loja)).data.get('meta', {});
+    }
+
+    function metaPorReal(loja) {
+      return metaDaLoja(loja).get('pontosPorReal', regras().metaPontosPorReal);
+    }
+
+    function metaPorVoucher(loja) {
+      return metaDaLoja(loja).get('pontosPorVoucher', regras().metaPontosPorVoucher);
+    }
+
+    // Quem gerencia a equipe de uma loja: o admin, ou o franqueado dela.
+    function gestorDaLoja(loja) {
+      return souAdmin() || (souFranqueado() && minhaLoja() == loja);
+    }
+
     function lancamentoDepois(id) {
       return getAfter(/databases/$(database)/documents/lancamentos/$(id)).data;
     }
@@ -250,7 +269,7 @@ service cloud.firestore {
             && novo().valor > 0
             && novo().valor <= regras().valorMaximo
             && piso(novo().pontos, novo().valor, regras().pontosPorReal)
-            && piso(novo().pontosEquipe, novo().valor, regras().metaPontosPorReal)
+            && piso(novo().pontosEquipe, novo().valor, metaPorReal(novo().loja))
             && getAfter(/databases/$(database)/documents/usuarios/$(novo().cliente)).data.ultimoLancamento == id;
       }
 
@@ -258,7 +277,7 @@ service cloud.firestore {
         return novo().tipo == 'voucher'
             && novo().valor == 0
             && novo().pontos == 0
-            && novo().pontosEquipe == regras().metaPontosPorVoucher
+            && novo().pontosEquipe == metaPorVoucher(novo().loja)
             && getAfter(/databases/$(database)/documents/usuarios/$(novo().cliente)/vouchers/$(novo().voucher)).data.lancamento == id;
       }
 
@@ -337,11 +356,62 @@ service cloud.firestore {
                         && resource.data.papel == 'funcionario');
     }
 
-    // --- Lojas e regras do clube (só o admin escreve) ---------------------
+    // --- Lojas e regras do clube -------------------------------------------
+    //
+    // O admin cria e edita as lojas. O franqueado só mexe nas metas da equipe
+    // da própria loja: quantos pontos de meta vale cada real vendido e cada
+    // voucher validado.
 
     match /lojas/{loja} {
+      function metaOk() {
+        let m = request.resource.data.meta;
+        return m is map
+            && m.keys().hasOnly(['pontosPorReal', 'pontosPorVoucher'])
+            && m.pontosPorReal is int && m.pontosPorReal >= 0 && m.pontosPorReal <= 100
+            && m.pontosPorVoucher is int && m.pontosPorVoucher >= 0 && m.pontosPorVoucher <= 1000;
+      }
+
       allow read: if logado();
-      allow write: if souAdmin();
+      allow create, delete: if souAdmin();
+      allow update: if souAdmin()
+                    || (souFranqueado() && minhaLoja() == loja
+                        && mudouSo(['meta', 'atualizadoEm']) && metaOk());
+    }
+
+    // --- Missões da equipe -------------------------------------------------
+    //
+    // O franqueado (ou o admin) dispara uma missão para a equipe da loja:
+    // "validar 20 vouchers", "R$ 2.000 em vendas identificadas". O progresso
+    // de cada pessoa é o quanto os contadores dela em `equipe/{email}` andaram
+    // desde a largada, guardada em `base`. Como esses contadores só sobem
+    // junto com um lançamento conferido, ninguém infla o próprio progresso.
+
+    match /missoesEquipe/{id} {
+      function missaoOk(d) {
+        return d.keys().hasOnly(['loja', 'titulo', 'tipo', 'alvo', 'premio', 'prazo', 'ativa',
+                                 'base', 'modelo', 'criadoPor', 'criadoEm', 'atualizadoEm'])
+            && d.titulo is string && d.titulo.size() > 0 && d.titulo.size() <= 60
+            && d.tipo in ['vouchers', 'compras', 'vendas']
+            && d.alvo is int && d.alvo > 0
+            && d.premio is string && d.premio.size() <= 80
+            && d.prazo is string && d.prazo.size() <= 10
+            && d.ativa is bool
+            && d.base is map;
+      }
+
+      allow read: if souAdmin() || (souEquipe() && resource.data.loja == minhaLoja());
+
+      allow create: if gestorDaLoja(request.resource.data.loja)
+                    && missaoOk(request.resource.data)
+                    && request.resource.data.ativa == true
+                    && request.resource.data.criadoPor == emailLogado()
+                    && exists(/databases/$(database)/documents/lojas/$(request.resource.data.loja));
+
+      allow update: if gestorDaLoja(resource.data.loja)
+                    && mudouSo(['titulo', 'alvo', 'premio', 'prazo', 'ativa', 'atualizadoEm'])
+                    && missaoOk(request.resource.data);
+
+      allow delete: if gestorDaLoja(resource.data.loja);
     }
 
     // config/regras   — pontos por real, teto por compra, metas da equipe

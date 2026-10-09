@@ -110,13 +110,14 @@ function loteDeCompra(db, { cliente, valor, loja, email, uid, comMeta = true, po
   return { lote, id }
 }
 
-function loteDeVoucher(db, { cliente, voucher, loja, email, uid, comMeta = true }) {
+function loteDeVoucher(db, { cliente, voucher, loja, email, uid, comMeta = true, pontosEquipe }) {
   const ref = doc(collection(db, 'lancamentos'))
   const id = ref.id
+  pontosEquipe ??= REGRAS.metaPontosPorVoucher
   const lote = writeBatch(db)
   lote.set(ref, {
     tipo: 'voucher', cliente, clienteNome: 'Cliente', voucher, voucherNome: 'x', loja, valor: 0, pontos: 0,
-    pontosEquipe: REGRAS.metaPontosPorVoucher, operador: email, operadorUid: uid, operadorNome: 'x',
+    pontosEquipe, operador: email, operadorUid: uid, operadorNome: 'x',
     dia: hoje, criadoEm: serverTimestamp(),
   })
   lote.update(doc(db, 'usuarios', cliente, 'vouchers', voucher), {
@@ -124,7 +125,7 @@ function loteDeVoucher(db, { cliente, voucher, loja, email, uid, comMeta = true 
   })
   if (comMeta) {
     lote.update(doc(db, 'equipe', email), {
-      pontos: increment(REGRAS.metaPontosPorVoucher), vouchers: increment(1), ultimoLancamento: id,
+      pontos: increment(pontosEquipe), vouchers: increment(1), ultimoLancamento: id,
     })
   }
   return { lote, id }
@@ -366,6 +367,68 @@ await teste('registra compra em qualquer loja (sem meta própria)', () =>
   assertSucceeds(loteDeCompra(admin, { cliente: 'cli', valor: 1500, loja: 'jundiai', email: ADMIN_EMAIL, uid: 'admin', comMeta: false }).lote.commit()))
 await teste('RECUSA o e-mail do admin sem verificação', () =>
   assertFails(setDoc(doc(adminSemVerificar, 'config', 'regras'), REGRAS)))
+
+console.log('\n== metas da loja (franqueado) ==')
+const META = { pontosPorReal: 3, pontosPorVoucher: 25 }
+await teste('franqueado define as metas da própria loja', () =>
+  assertSucceeds(updateDoc(doc(franq, 'lojas', 'cajamar'), { meta: META, atualizadoEm: serverTimestamp() })))
+await teste('RECUSA franqueado mexer nas metas de outra loja', () =>
+  assertFails(updateDoc(doc(franq, 'lojas', 'jundiai'), { meta: META })))
+await teste('RECUSA franqueado renomear a loja', () =>
+  assertFails(updateDoc(doc(franq, 'lojas', 'cajamar'), { nome: 'Outra' })))
+await teste('RECUSA funcionário mexer nas metas', () =>
+  assertFails(updateDoc(doc(func, 'lojas', 'cajamar'), { meta: { pontosPorReal: 99, pontosPorVoucher: 999 } })))
+await teste('RECUSA meta fora do formato', async () => {
+  await assertFails(updateDoc(doc(franq, 'lojas', 'cajamar'), { meta: { pontosPorReal: -1, pontosPorVoucher: 10 } }))
+  await assertFails(updateDoc(doc(franq, 'lojas', 'cajamar'), { meta: { pontosPorReal: 2, pontosPorVoucher: 10, extra: 1 } }))
+})
+await teste('compra na loja usa a meta dela (3 por real)', () =>
+  assertSucceeds(loteDeCompra(func, { cliente: 'cli', valor: 2000, loja: 'cajamar', email: 'func@ex.com', uid: 'func',
+    pontosEquipe: piso(2000, META.pontosPorReal) }).lote.commit()))
+await teste('RECUSA meta calculada com a taxa da rede', () =>
+  assertFails(loteDeCompra(func, { cliente: 'cli', valor: 2000, loja: 'cajamar', email: 'func@ex.com', uid: 'func' }).lote.commit()))
+await teste('loja sem meta própria segue a da rede', () =>
+  assertSucceeds(loteDeCompra(funcJ, { cliente: 'cli', valor: 2000, loja: 'jundiai', email: 'funcj@ex.com', uid: 'funcj' }).lote.commit()))
+await teste('voucher na loja usa a meta dela (25)', async () => {
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), 'usuarios', 'cli', 'vouchers', 'v-meta'), { recompensaId: 'coxinha-g', pontos: 300, estado: 'disponivel' }))
+  await assertFails(loteDeVoucher(func, { cliente: 'cli', voucher: 'v-meta', loja: 'cajamar', email: 'func@ex.com', uid: 'func' }).lote.commit())
+  await assertSucceeds(loteDeVoucher(func, { cliente: 'cli', voucher: 'v-meta', loja: 'cajamar', email: 'func@ex.com', uid: 'func',
+    pontosEquipe: META.pontosPorVoucher }).lote.commit())
+})
+
+console.log('\n== missões da equipe ==')
+const missao = (extra = {}) => ({
+  loja: 'cajamar', titulo: 'Leitor de vouchers', tipo: 'vouchers', alvo: 20, premio: 'Folga extra', prazo: '',
+  ativa: true, base: { 'func@ex.com': { vouchers: 1, compras: 2, vendas: 9980 } }, modelo: 'leitor-vouchers',
+  criadoPor: 'franq@ex.com', criadoEm: serverTimestamp(), ...extra,
+})
+await teste('franqueado dispara missão para a loja dele', () =>
+  assertSucceeds(setDoc(doc(franq, 'missoesEquipe', 'm1'), missao())))
+await teste('RECUSA disparar missão em outra loja', () =>
+  assertFails(setDoc(doc(franq, 'missoesEquipe', 'm2'), missao({ loja: 'jundiai' }))))
+await teste('RECUSA funcionário disparar missão', () =>
+  assertFails(setDoc(doc(func, 'missoesEquipe', 'm3'), missao({ criadoPor: 'func@ex.com' }))))
+await teste('RECUSA missão com tipo ou alvo inválido', async () => {
+  await assertFails(setDoc(doc(franq, 'missoesEquipe', 'm4'), missao({ tipo: 'pontos' })))
+  await assertFails(setDoc(doc(franq, 'missoesEquipe', 'm5'), missao({ alvo: 0 })))
+})
+await teste('funcionário vê as missões da loja dele', () =>
+  assertSucceeds(getDocs(query(collection(func, 'missoesEquipe'), where('loja', '==', 'cajamar')))))
+await teste('RECUSA ver missões de outra loja', () =>
+  assertFails(getDocs(query(collection(funcJ, 'missoesEquipe'), where('loja', '==', 'cajamar')))))
+await teste('RECUSA cliente ver missões', () =>
+  assertFails(getDocs(query(collection(cli, 'missoesEquipe'), where('loja', '==', 'cajamar')))))
+await teste('RECUSA funcionário mexer na missão', () =>
+  assertFails(updateDoc(doc(func, 'missoesEquipe', 'm1'), { alvo: 1 })))
+await teste('RECUSA trocar a largada (base) depois de disparada', () =>
+  assertFails(updateDoc(doc(franq, 'missoesEquipe', 'm1'), { base: {} })))
+await teste('franqueado encerra e apaga a missão', async () => {
+  await assertSucceeds(updateDoc(doc(franq, 'missoesEquipe', 'm1'), { ativa: false, atualizadoEm: serverTimestamp() }))
+  await assertSucceeds(deleteDoc(doc(franq, 'missoesEquipe', 'm1')))
+})
+await teste('admin dispara missão em qualquer loja', () =>
+  assertSucceeds(setDoc(doc(admin, 'missoesEquipe', 'm6'), missao({ loja: 'jundiai', criadoPor: ADMIN_EMAIL }))))
 
 console.log('\n== reserva de telefone ==')
 const NUM = '+5511971813986'

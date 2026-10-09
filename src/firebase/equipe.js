@@ -7,6 +7,7 @@
 //   config/regras          pontos por real, teto por compra, metas da equipe
 //   config/catalogo        preço em pontos de cada recompensa
 //   lancamentos/{id}       livro de auditoria: cada compra e cada voucher
+//   missoesEquipe/{id}     missões que o franqueado dispara para a equipe
 //
 // As regras do Firestore conferem cada escrita daqui (ver firestore.rules).
 // Por isso as operações do caixa são lotes: a carteira do cliente, o
@@ -97,6 +98,95 @@ export function salvarLoja(id, dados) {
   return setDoc(doc(db, 'lojas', id), { ...dados, atualizadoEm: serverTimestamp() }, { merge: true })
 }
 
+// --- Metas da equipe ---------------------------------------------------------
+
+// Taxas de meta de uma loja: as que o franqueado escolheu ou, sem elas, o
+// padrão da rede. Precisa dar o mesmo que `metaPorReal`/`metaPorVoucher` nas
+// regras, senão o lançamento é recusado.
+export function metaDaLoja(unidades, loja, regras) {
+  const meta = unidades.find((u) => u.id === loja)?.meta || {}
+  return {
+    pontosPorReal: meta.pontosPorReal ?? regras.metaPontosPorReal,
+    pontosPorVoucher: meta.pontosPorVoucher ?? regras.metaPontosPorVoucher,
+  }
+}
+
+// `updateDoc`, não `setDoc`: o franqueado só pode tocar no campo `meta`.
+export function salvarMetaDaLoja(loja, meta) {
+  return updateDoc(doc(db, 'lojas', loja), { meta, atualizadoEm: serverTimestamp() })
+}
+
+// --- Missões da equipe -------------------------------------------------------
+
+// O que cada tipo de missão conta, a partir dos contadores de `equipe/{email}`.
+export const TIPOS_MISSAO = {
+  vouchers: { rotulo: 'Vouchers validados', unidade: 'vouchers' },
+  compras: { rotulo: 'Compras identificadas', unidade: 'compras' },
+  vendas: { rotulo: 'Vendas identificadas (R$)', unidade: 'em vendas' },
+}
+
+// Missões prontas: o franqueado escolhe, ajusta o alvo e o prêmio e dispara.
+// `alvo` de vendas em centavos.
+export const MODELOS_MISSAO = [
+  { id: 'leitor-vouchers', titulo: 'Leitor de vouchers', tipo: 'vouchers', alvo: 20, premio: '' },
+  { id: 'maratona-vouchers', titulo: 'Maratona de vouchers', tipo: 'vouchers', alvo: 50, premio: '' },
+  { id: 'caixa-fiel', titulo: 'Caixa fiel', tipo: 'compras', alvo: 30, premio: '' },
+  { id: 'cem-clientes', titulo: '100 clientes no clube', tipo: 'compras', alvo: 100, premio: '' },
+  { id: 'vendedor-ouro', titulo: 'Vendedor de ouro', tipo: 'vendas', alvo: 200000, premio: '' },
+  { id: 'vendedor-diamante', titulo: 'Vendedor diamante', tipo: 'vendas', alvo: 500000, premio: '' },
+]
+
+export function observarMissoesEquipe(loja, aoMudar, aoFalhar) {
+  return onSnapshot(
+    query(collection(db, 'missoesEquipe'), where('loja', '==', loja)),
+    (snap) => {
+      const ms = (m) => m.criadoEm?.toMillis?.() ?? Date.now()
+      aoMudar(lista(snap).sort((a, b) => ms(b) - ms(a)))
+    },
+    aoFalhar,
+  )
+}
+
+// A largada de cada pessoa é o contador dela agora: o progresso é o que
+// andar daqui em diante. Quem entrar na equipe depois parte do zero.
+export function dispararMissao({ loja, titulo, tipo, alvo, premio, prazo, modelo }, equipe, quemDispara) {
+  const base = Object.fromEntries(
+    equipe.map((m) => [m.id, { vouchers: m.vouchers || 0, compras: m.compras || 0, vendas: m.vendas || 0 }]),
+  )
+  return setDoc(doc(collection(db, 'missoesEquipe')), {
+    loja,
+    titulo: titulo.trim(),
+    tipo,
+    alvo,
+    premio: (premio || '').trim(),
+    prazo: prazo || '',
+    ativa: true,
+    base,
+    modelo: modelo || '',
+    criadoPor: normalizarEmail(quemDispara),
+    criadoEm: serverTimestamp(),
+  })
+}
+
+export function encerrarMissao(id) {
+  return updateDoc(doc(db, 'missoesEquipe', id), { ativa: false, atualizadoEm: serverTimestamp() })
+}
+
+export function apagarMissao(id) {
+  return deleteDoc(doc(db, 'missoesEquipe', id))
+}
+
+// Quanto a pessoa já fez da missão. Nunca negativo (o admin pode zerar a
+// meta de alguém depois de uma troca de prêmio).
+export function progressoNaMissao(missao, membro) {
+  const base = missao.base?.[membro.id]?.[missao.tipo] || 0
+  const feito = Math.max(0, (membro[missao.tipo] || 0) - base)
+  return { feito, fracao: Math.min(1, feito / missao.alvo), concluida: feito >= missao.alvo }
+}
+
+// Prazo vencido: a missão sai das ativas, mesmo sem ninguém encerrar.
+export const missaoVencida = (missao, hoje = diaDeHoje()) => !!missao.prazo && missao.prazo < hoje
+
 // --- Pessoas da equipe -----------------------------------------------------
 
 export function observarEquipe(loja, aoMudar, aoFalhar) {
@@ -173,11 +263,12 @@ export const pontosDaCompra = (centavos, taxa) => Math.floor((centavos * taxa) /
 // Compra identificada: credita o cliente, lança no livro, avisa o cliente e
 // soma na meta de quem registrou. `operador` é { email, uid, membro } — sem
 // `membro` (o admin) não há meta para somar.
-export async function registrarCompraNoCaixa({ cliente, valor, loja, lojaNome, regras, operador }) {
+// `meta` são as taxas de meta da loja (ver `metaDaLoja`).
+export async function registrarCompraNoCaixa({ cliente, valor, loja, lojaNome, regras, meta, operador }) {
   const ref = doc(collection(db, 'lancamentos'))
   const id = ref.id
   const pontos = pontosDaCompra(valor, regras.pontosPorReal)
-  const pontosEquipe = pontosDaCompra(valor, regras.metaPontosPorReal)
+  const pontosEquipe = pontosDaCompra(valor, meta.pontosPorReal)
   const lote = writeBatch(db)
 
   lote.set(ref, {
@@ -231,10 +322,10 @@ export async function registrarCompraNoCaixa({ cliente, valor, loja, lojaNome, r
 }
 
 // Voucher entregue no balcão: baixa única, lançada no livro e na meta.
-export async function validarVoucherNoCaixa({ cliente, voucher, loja, regras, operador }) {
+export async function validarVoucherNoCaixa({ cliente, voucher, loja, meta, operador }) {
   const ref = doc(collection(db, 'lancamentos'))
   const id = ref.id
-  const pontosEquipe = regras.metaPontosPorVoucher
+  const pontosEquipe = meta.pontosPorVoucher
   const email = normalizarEmail(operador.email)
   const lote = writeBatch(db)
 

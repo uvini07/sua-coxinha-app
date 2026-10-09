@@ -15,7 +15,7 @@ import { Perfil, Configuracoes } from './telas/Perfil.jsx'
 import { Notificacoes } from './telas/Notificacoes.jsx'
 import { Niveis } from './telas/Niveis.jsx'
 import { Celebracao } from './telas/Celebracao.jsx'
-import { CaixaCompra, CaixaVoucher, Lojas, Movimento, PainelEquipe, Pessoas, RegrasClube } from './telas/Equipe.jsx'
+import { CaixaCompra, CaixaVoucher, Lojas, MetasEquipe, Movimento, PainelEquipe, Pessoas, RegrasClube } from './telas/Equipe.jsx'
 
 // Rotas que podem ser abertas sem estar logado.
 const ABERTAS = ['/', '/onboarding', '/entrar']
@@ -25,6 +25,7 @@ const ABERTAS = ['/', '/onboarding', '/entrar']
 // das regras do Firestore.)
 const SO_PARA = {
   pessoas: ['admin', 'franqueado'],
+  metas: ['admin', 'franqueado'],
   regras: ['admin'],
   lojas: ['admin'],
 }
@@ -148,6 +149,8 @@ export function App() {
         return <Movimento />
       case 'pessoas':
         return <Pessoas />
+      case 'metas':
+        return <MetasEquipe />
       case 'regras':
         return <RegrasClube />
       case 'lojas':

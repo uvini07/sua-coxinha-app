@@ -153,6 +153,7 @@ const MENSAGENS = {
   'sem-credencial-nativa': 'O login do aparelho não devolveu as credenciais. Tente de novo.',
   'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos e tente novamente.',
   'permission-denied': 'O servidor recusou a operação. Confira as regras do Firestore no console.',
+  'saldo-insuficiente': 'Seu saldo não cobre esta recompensa. Atualize a tela e confira os pontos.',
   'catalogo-ausente': 'O catálogo de recompensas ainda não foi publicado. Avise a Sua Coxinha.',
   'membro-existente': 'Esse e-mail já está cadastrado na equipe.',
   'telefone-em-uso': 'Esse telefone já está em uso por outra conta do clube.',

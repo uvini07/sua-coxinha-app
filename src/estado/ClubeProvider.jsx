@@ -333,8 +333,13 @@ export function ClubeProvider({ children }) {
         setErro(mensagemDeErro({ code: 'catalogo-ausente' }))
         return null
       }
+      setErro('')
       try {
-        return await resgatarRecompensa(sessao.uid, recompensa, codigoVoucher())
+        const voucher = await resgatarRecompensa(sessao.uid, recompensa, codigoVoucher())
+        // null = o saldo no servidor não cobria o preço (ex.: outro aparelho
+        // resgatou antes). Sem mensagem, isso também parecia um clique mudo.
+        if (!voucher) setErro(mensagemDeErro({ code: 'saldo-insuficiente' }))
+        return voucher
       } catch (e) {
         setErro(mensagemDeErro(e))
         return null

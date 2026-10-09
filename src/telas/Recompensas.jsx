@@ -67,8 +67,9 @@ export function Recompensas() {
 
 export function RecompensaDetalhe({ id }) {
   const { ir } = useRota()
-  const { usuario, recompensas, resgatar } = useClube()
+  const { usuario, recompensas, resgatar, erro, limparErro } = useClube()
   const [confirmando, setConfirmando] = useState(false)
+  const [resgatando, setResgatando] = useState(false)
   const recompensa = recompensas.find((r) => r.id === id)
 
   if (!recompensa)
@@ -82,10 +83,21 @@ export function RecompensaDetalhe({ id }) {
   const podeResgatar = usuario.saldo >= recompensa.pontos
   const faltam = recompensa.pontos - usuario.saldo
 
+  // Se o resgate falhar, a folha fica aberta mostrando o motivo. Antes ela
+  // fechava em silêncio e o toque parecia não ter feito nada.
   const confirmar = async () => {
+    if (resgatando) return
+    setResgatando(true)
     const voucher = await resgatar(recompensa)
+    setResgatando(false)
+    if (!voucher) return
     setConfirmando(false)
-    if (voucher) ir(`/celebracao/resgate?voucher=${voucher.id}`, { substituir: true })
+    ir(`/celebracao/resgate?voucher=${voucher.id}`, { substituir: true })
+  }
+
+  const abrirConfirmacao = () => {
+    limparErro()
+    setConfirmando(true)
   }
 
   return (
@@ -142,7 +154,7 @@ export function RecompensaDetalhe({ id }) {
         <span className="t-peq c-sutil">
           {podeResgatar ? 'Válido por 7 dias · Cajamar' : `Faltam ${faltam.toLocaleString('pt-BR')} pontos`}
         </span>
-        <Botao onClick={() => setConfirmando(true)} desabilitado={!podeResgatar}>
+        <Botao onClick={abrirConfirmacao} desabilitado={!podeResgatar}>
           {podeResgatar ? `Resgatar por ${recompensa.pontos} pontos` : 'Saldo insuficiente'}
         </Botao>
       </div>
@@ -181,7 +193,16 @@ export function RecompensaDetalhe({ id }) {
           </span>
         </div>
 
-        <Botao onClick={confirmar}>Confirmar resgate</Botao>
+        {erro && (
+          <p className="aviso-teste" role="alert">
+            <Icone nome="info" tamanho={15} cor="var(--sinal-alerta)" />
+            <span className="t-peq">{erro}</span>
+          </p>
+        )}
+
+        <Botao onClick={confirmar} desabilitado={resgatando}>
+          {resgatando ? 'Resgatando…' : erro ? 'Tentar de novo' : 'Confirmar resgate'}
+        </Botao>
         <Botao estilo="fantasma" onClick={() => setConfirmando(false)}>
           Agora não
         </Botao>

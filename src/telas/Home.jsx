@@ -6,6 +6,7 @@ import { CardMissao, CardParceiro, CardRecompensa, LinhaHistorico } from '../com
 import { Brilho, CabecalhoSecao, Divisor } from '../componentes/primitivos.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { PARCEIROS } from '../dados/clube.js'
+import { Coxinildo } from '../componentes/Coxinildo.jsx'
 
 const saudacao = () => {
   const h = new Date().getHours()
@@ -35,7 +36,7 @@ export function Home() {
 
       <header className="home__topo safe-topo px">
         <button type="button" className="home__avatar" onClick={() => ir('/perfil')} aria-label="Abrir perfil">
-          <img src={`${import.meta.env.BASE_URL}produtos/mascote.webp`} alt="" />
+          <Coxinildo avatar={usuario.avatar} />
         </button>
         <div className="cresce pilha">
           <span className="t-peq c-sutil">{saudacao()}</span>

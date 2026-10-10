@@ -12,6 +12,7 @@ import { Recompensas, RecompensaDetalhe, Vouchers } from './telas/Recompensas.js
 import { MeuQR } from './telas/MeuQR.jsx'
 import { Clube, ClubeCategoria, ParceiroDetalhe } from './telas/Clube.jsx'
 import { Perfil, Configuracoes } from './telas/Perfil.jsx'
+import { EditorAvatar } from './telas/Avatar.jsx'
 import { Notificacoes } from './telas/Notificacoes.jsx'
 import { Niveis } from './telas/Niveis.jsx'
 import { Celebracao } from './telas/Celebracao.jsx'
@@ -124,6 +125,8 @@ export function App() {
         return <ParceiroDetalhe id={partes[1]} />
       case 'perfil':
         return <Perfil />
+      case 'avatar':
+        return <EditorAvatar />
       case 'config':
         return <Configuracoes />
       case 'notificacoes':

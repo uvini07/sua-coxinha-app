@@ -6,6 +6,7 @@ import { Botao, Brilho } from '../componentes/primitivos.jsx'
 import { Icone } from '../componentes/Icone.jsx'
 import { QRCode } from '../componentes/QRCode.jsx'
 import { qrDoCliente } from '../firebase/equipe.js'
+import { Coxinildo } from '../componentes/Coxinildo.jsx'
 
 export function MeuQR() {
   const { ir } = useRota()
@@ -48,7 +49,7 @@ export function MeuQR() {
 
       <div className="px mt8">
         <div className="qr__cartao">
-          <img src={`${import.meta.env.BASE_URL}produtos/mascote.webp`} alt="" className="qr__avatar" />
+          <Coxinildo avatar={usuario.avatar} className="qr__avatar" />
           <div className="centro pilha g8">
             <strong className="t-h3" style={{ color: '#131313' }}>
               {usuario.nome}

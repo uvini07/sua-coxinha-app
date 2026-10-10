@@ -39,6 +39,7 @@ import {
   validarVoucherNoCaixa,
   vouchersDisponiveis,
 } from '../firebase/equipe.js'
+import { Coxinildo } from '../componentes/Coxinildo.jsx'
 
 // ÁREA DA EQUIPE
 //
@@ -454,7 +455,7 @@ function CartaoCliente({ cliente }) {
   const nivel = nivelDe(cliente.acumulado || 0).atual
   return (
     <div className="caixa linha-h g12">
-      <img src={`${import.meta.env.BASE_URL}produtos/mascote.webp`} alt="" className="equipe__avatar" />
+      <Coxinildo avatar={cliente.avatar} className="equipe__avatar" />
       <span className="cresce pilha g4">
         <strong className="t-h4">{cliente.nome || 'Cliente sem nome'}</strong>
         <span className="t-peq c-sutil">

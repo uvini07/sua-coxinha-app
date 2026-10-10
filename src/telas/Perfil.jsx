@@ -5,6 +5,7 @@ import { AppBar, NavInferior, Tela } from '../componentes/Tela.jsx'
 import { BarraProgresso, Botao, Brilho, Divisor } from '../componentes/primitivos.jsx'
 import { SeloNivel } from '../componentes/SeloNivel.jsx'
 import { Icone } from '../componentes/Icone.jsx'
+import { Coxinildo } from '../componentes/Coxinildo.jsx'
 
 function ItemMenu({ icone, rotulo, valor, onClick }) {
   return (
@@ -36,7 +37,12 @@ export function Perfil() {
       </header>
 
       <div className="perfil__topo mt16">
-        <img src={`${import.meta.env.BASE_URL}produtos/mascote.webp`} alt="" className="perfil__avatar" />
+        <button type="button" className="perfil__avatar-botao" onClick={() => ir('/avatar')} aria-label="Personalizar seu Coxinildo">
+          <Coxinildo avatar={usuario.avatar} className="perfil__avatar" />
+          <span className="perfil__avatar-editar">
+            <Icone nome="brilho" tamanho={15} />
+          </span>
+        </button>
         <strong className="t-h2">{usuario.nome}</strong>
         <span className="t-corpo c-sutil">
           {usuario.telefone} · {unidade.nome}

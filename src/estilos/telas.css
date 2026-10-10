@@ -380,7 +380,8 @@
   overflow: hidden;
   background: var(--fundo-superficie);
 }
-.home__avatar img {
+.home__avatar img,
+.home__avatar svg {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -640,6 +641,7 @@
   box-shadow: var(--sombra-elevada);
 }
 .qr__avatar {
+  background: var(--fundo-superficie);
   width: 56px;
   height: 56px;
   border-radius: var(--raio-pill);
@@ -830,6 +832,8 @@
   gap: 6px;
 }
 .perfil__avatar {
+  display: block;
+  background: var(--fundo-superficie);
   width: 88px;
   height: 88px;
   border-radius: var(--raio-pill);
@@ -1068,4 +1072,67 @@
   padding: var(--e24);
   text-align: center;
   background: var(--fundo-elevado);
+}
+
+/* ---------- Editor do Coxinildo ---------- */
+
+.avatar__palco {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  margin: var(--e8) auto 0;
+  width: 220px;
+  height: 250px;
+  border-radius: 40% 40% 32px 32px;
+  background: radial-gradient(circle at 50% 38%, rgba(249, 193, 21, 0.22), rgba(249, 193, 21, 0.04) 65%);
+  border: 1px solid rgba(249, 193, 21, 0.25);
+}
+.avatar__grande {
+  width: 200px;
+  height: 240px;
+}
+.avatar__grade {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--e8);
+}
+.avatar__opcao {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--e4);
+  padding: var(--e8) var(--e4) var(--e12);
+  border-radius: var(--raio-md);
+  background: var(--fundo-elevado);
+  border: 1.5px solid var(--borda-sutil);
+  color: var(--texto-secundario);
+}
+.avatar__opcao--ativa {
+  border-color: var(--ouro-500);
+  background: rgba(249, 193, 21, 0.1);
+  color: var(--texto-primario);
+}
+.avatar__mini {
+  width: 72px;
+  height: 72px;
+}
+.perfil__avatar-botao {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--e4);
+}
+.perfil__avatar-editar {
+  position: absolute;
+  right: -2px;
+  bottom: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--gradiente-ouro);
+  color: var(--marrom-churros);
+  border: 2px solid var(--fundo-base);
 }

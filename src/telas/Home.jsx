@@ -17,12 +17,14 @@ const saudacao = () => {
 const ATALHOS = [
   { icone: 'qr', rotulo: 'Meu QR', rota: '/qr' },
   { icone: 'carteira', rotulo: 'Extrato', rota: '/carteira' },
+  { icone: 'ticket', rotulo: 'Vouchers', rota: '/vouchers', contador: 'vouchers' },
   { icone: 'pessoas', rotulo: 'Convidar', rota: '/missao/indicacao' },
 ]
 
 export function Home() {
   const { ir } = useRota()
-  const { usuario, nivel, missoes, recompensas, historico, naoLidas, papel } = useClube()
+  const { usuario, nivel, missoes, recompensas, historico, naoLidas, papel, vouchers } = useClube()
+  const vouchersAtivos = vouchers.filter((v) => v.estado === 'disponivel').length
 
   const missaoDestaque = missoes.find((m) => !m.concluida && !m.bloqueada) || missoes[0]
   const paraResgatar = [...recompensas].sort((a, b) => a.pontos - b.pontos).slice(0, 6)
@@ -70,6 +72,11 @@ export function Home() {
           <button key={a.rota} type="button" className="home__atalho" onClick={() => ir(a.rota)}>
             <Icone nome={a.icone} tamanho={20} cor="var(--ouro-500)" />
             <span className="t-nav c-secundario">{a.rotulo}</span>
+            {a.contador === 'vouchers' && vouchersAtivos > 0 && (
+              <b className="home__atalho-contador" aria-label={`${vouchersAtivos} vouchers ativos`}>
+                {vouchersAtivos}
+              </b>
+            )}
           </button>
         ))}
       </div>

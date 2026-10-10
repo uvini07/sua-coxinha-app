@@ -2,8 +2,9 @@ import { Icone } from './Icone.jsx'
 import { Gota } from './Gota.jsx'
 
 // O elemento-assinatura do app: a carteira de valor dentro da Sua Coxinha.
-// Gradiente de ouro com os amarelos da marca, textura da sub-marca e o texto em
-// Marrom Churros — nunca preto, que é o que deixaria com cara de banco.
+// O cartão veste a cor do nível do cliente: bronze, prata, ouro ou diamante
+// (azul). A textura da sub-marca e o texto seguem a tinta escura de cada um —
+// nunca preto, que é o que deixaria com cara de banco.
 // Um por tela. O resto da interface é preto para este cartão brilhar.
 
 export function CartaoDourado({ saldo, pendentes, aExpirar, nivel, onClick, compacto }) {
@@ -11,17 +12,17 @@ export function CartaoDourado({ saldo, pendentes, aExpirar, nivel, onClick, comp
   return (
     <Elemento
       type={onClick ? 'button' : undefined}
-      className={`cartao-ouro${compacto ? ' cartao-ouro--compacto' : ''}`}
+      className={`cartao-ouro cartao-ouro--${nivel?.id || 'bronze'}${compacto ? ' cartao-ouro--compacto' : ''}`}
       onClick={onClick}
     >
       <div className="cartao-ouro__textura" aria-hidden="true">
-        <Gota tamanho={190} cor="var(--marrom-churros)" opacidade={0.07} style={{ top: -28, right: -46 }} />
-        <Gota tamanho={110} cor="var(--marrom-churros)" opacidade={0.07} style={{ bottom: -24, right: 54 }} />
-        <Gota tamanho={74} cor="var(--marrom-churros)" opacidade={0.06} style={{ bottom: 18, right: -14 }} />
+        <Gota tamanho={190} cor="currentColor" opacidade={0.07} style={{ top: -28, right: -46 }} />
+        <Gota tamanho={110} cor="currentColor" opacidade={0.07} style={{ bottom: -24, right: 54 }} />
+        <Gota tamanho={74} cor="currentColor" opacidade={0.06} style={{ bottom: 18, right: -14 }} />
       </div>
 
       <div className="cartao-ouro__topo">
-        <span className="t-overline">Seu saldo dourado</span>
+        <span className="t-overline">Seu saldo</span>
         <span className="cartao-ouro__nivel">
           <Icone nome={nivel?.icone || 'trofeu'} tamanho={14} />
           <span className="t-overline">Nível {nivel?.nome ? nivel.nome.charAt(0) + nivel.nome.slice(1).toLowerCase() : 'Bronze'}</span>

@@ -23,7 +23,7 @@ export const NIVEIS = [
     nome: 'BRONZE',
     minimo: 0,
     cor: 'var(--nivel-bronze)',
-    gradiente: 'linear-gradient(135deg, #f0be92, #c8792f 45%, #7e4412)',
+    gradiente: 'linear-gradient(135deg, #f6cfa6, #d98e4a 45%, #95511c)',
     icone: 'escudo',
     beneficios: ['Acesso ao catálogo de recompensas', 'Missões Douradas do mês'],
   },
@@ -55,7 +55,7 @@ export const NIVEIS = [
     nome: 'DIAMANTE',
     minimo: 5000,
     cor: 'var(--nivel-diamante)',
-    gradiente: 'linear-gradient(135deg, #eafbff, #7fd6e8 45%, #2e93ae)',
+    gradiente: 'linear-gradient(135deg, #e6f4ff, #5fb1f6 45%, #1c5ccf)',
     icone: 'brilho',
     beneficios: [
       'Tudo do Ouro',

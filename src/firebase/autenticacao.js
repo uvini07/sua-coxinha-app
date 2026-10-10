@@ -19,6 +19,7 @@ import {
   signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
+  deleteUser,
   signOut,
 } from 'firebase/auth'
 import { auth } from './app.js'
@@ -128,6 +129,14 @@ export async function sairDaConta() {
     }
   }
   await signOut(auth)
+}
+
+// Exclui a conta de login (o registro no Firebase Authentication). Os dados
+// do clube têm de ser apagados antes: sem sessão, as regras não deixam.
+// Se o login for antigo, o Firebase recusa com `auth/requires-recent-login`;
+// quem chama decide o que fazer.
+export async function excluirUsuario() {
+  if (auth.currentUser) await deleteUser(auth.currentUser)
 }
 
 // Aceita o telefone como o cliente digitou e devolve em E.164, que é o formato

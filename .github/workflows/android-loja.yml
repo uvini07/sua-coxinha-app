@@ -1,0 +1,158 @@
+# Gera a versão do Android para a Play Store: um .aab assinado com a chave de
+# upload. Roda só sob demanda (Actions → "Versão para a Play Store" → Run
+# workflow), porque cada envio para a loja é uma decisão, não um efeito de push.
+#
+# DIFERENÇA PARA O APK DE TESTE
+#   · formato .aab (a Play Store não aceita mais .apk em app novo)
+#   · build release, assinado com a CHAVE DE UPLOAD, não com a de depuração
+#   · versionCode sobe sozinho a cada execução — a loja recusa número repetido
+#
+# A CHAVE DE UPLOAD
+# Vem de dois secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_UPLOAD_KEYSTORE_BASE64   o arquivo .jks em base64
+#   ANDROID_UPLOAD_KEYSTORE_SENHA    a senha (a mesma do arquivo e da chave)
+# Alias fixo: `upload`. Com o Play App Signing ligado (padrão em app novo), a
+# Google guarda a chave que assina o app de verdade; esta só prova que o envio
+# veio de vocês. Se ela vazar ou se perder, dá para trocar pelo Play Console.
+#
+# LOGIN COM GOOGLE NA VERSÃO DA LOJA
+# O app instalado pela loja é assinado pela chave da Google, não por esta.
+# Depois do primeiro envio: Play Console → Configuração → Integridade do app →
+# copie a SHA-1 da "chave de assinatura de app" e cadastre no Firebase (app
+# Android → Adicionar impressão digital). Sem isso o login falha só na loja.
+
+name: Versão para a Play Store
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aab:
+    name: Gerar .aab assinado
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Conferir a chave de upload
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          SENHA: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_SENHA }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$SENHA" ]; then
+            echo "::error::Faltam os secrets ANDROID_UPLOAD_KEYSTORE_BASE64 e/ou ANDROID_UPLOAD_KEYSTORE_SENHA. Veja LOJA.md."
+            exit 1
+          fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          sha=$(keytool -list -v -keystore "$RUNNER_TEMP/upload.jks" -alias upload -storepass "$SENHA" 2>/dev/null \
+                | grep 'SHA1:' | head -1 | awk '{print $2}')
+          if [ -z "$sha" ]; then
+            echo "::error::A chave não abriu: secret colado pela metade, senha errada ou alias diferente de 'upload'."
+            exit 1
+          fi
+          echo "SHA-1 da chave de upload: $sha"
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do app web
+        run: npm run build
+
+      - name: Gerar o projeto Android
+        run: npx cap add android
+
+      - name: Permissão de câmera
+        run: |
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.CAMERA" />#' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.CAMERA' android/app/src/main/AndroidManifest.xml || { echo "::error::Não consegui declarar a permissão CAMERA"; exit 1; }
+
+      - name: Ligar ao Firebase
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          elif [ -f firebase/google-services.json ]; then
+            cp firebase/google-services.json android/app/google-services.json
+          else
+            echo "::error::Sem google-services.json o login com Google não funciona. Não faz sentido mandar para a loja assim."
+            exit 1
+          fi
+
+      # versionCode: número da execução + 100 (os 100 primeiros ficam livres
+      # para envios feitos à mão, se um dia for preciso). versionName: o
+      # "version" do package.json — é o que aparece para o cliente na loja.
+      - name: Versão e assinatura
+        env:
+          SENHA: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_SENHA }}
+        run: |
+          codigo=$(( ${{ github.run_number }} + 100 ))
+          nome=$(node -p "require('./package.json').version")
+          echo "versionCode $codigo · versionName $nome"
+          cat >> android/app/build.gradle <<GRADLE
+
+          android {
+              defaultConfig {
+                  versionCode $codigo
+                  versionName "$nome"
+              }
+              signingConfigs {
+                  loja {
+                      storeFile file("$RUNNER_TEMP/upload.jks")
+                      storePassword System.getenv("SENHA")
+                      keyAlias "upload"
+                      keyPassword System.getenv("SENHA")
+                  }
+              }
+              buildTypes {
+                  release { signingConfig signingConfigs.loja }
+              }
+          }
+          GRADLE
+          echo "CODIGO=$codigo" >> "$GITHUB_ENV"
+          echo "NOME=$nome" >> "$GITHUB_ENV"
+
+      - name: Sincronizar web → nativo
+        run: npx cap sync android
+
+      - name: Compilar o .aab
+        env:
+          SENHA: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_SENHA }}
+        run: ./gradlew bundleRelease --no-daemon
+        working-directory: android
+
+      - name: Conferir a assinatura
+        run: |
+          aab=android/app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify "$aab" > /dev/null || { echo "::error::O .aab saiu sem assinatura válida."; exit 1; }
+          cp "$aab" "pontos-dourados-$NOME-$CODIGO.aab"
+          {
+            echo "### Versão para a Play Store"
+            echo ""
+            echo "\`pontos-dourados-$NOME-$CODIGO.aab\` — versionName **$NOME**, versionCode **$CODIGO**."
+            echo ""
+            echo "Baixe em **Artifacts**, logo abaixo, e envie em Play Console → Testar e lançar."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # O .aab não vai para a Release pública: ele é o pacote da loja, não um
+      # instalador. Fica no Artifact, que só quem tem acesso ao repositório baixa.
+      - name: Guardar o .aab
+        uses: actions/upload-artifact@v4
+        with:
+          name: pontos-dourados-play-store
+          path: pontos-dourados-*.aab
+          if-no-files-found: error
+          retention-days: 90

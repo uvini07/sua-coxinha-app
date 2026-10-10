@@ -5,12 +5,14 @@ import {
   concluirRedirecionamento,
   entrarComApple as loginApple,
   entrarComGoogle as loginGoogle,
+  excluirUsuario,
   mensagemDeErro,
   observarSessao,
   paraE164,
   sairDaConta,
 } from '../firebase/autenticacao.js'
 import {
+  apagarConta,
   garantirPerfil,
   marcarNotificacoesLidas,
   observarColecao,
@@ -268,6 +270,31 @@ export function ClubeProvider({ children }) {
     await sairDaConta()
   }, [])
 
+  // Exclusão de conta (LGPD e exigência da Play Store / App Store): apaga
+  // carteira, extrato, vouchers, avisos e o telefone reservado, depois o login.
+  // Se o Firebase pedir login recente para apagar o login, os dados já se foram
+  // e só sobra o registro de e-mail — a sessão é encerrada do mesmo jeito.
+  const excluirConta = useCallback(async () => {
+    if (!sessao) return false
+    setErro('')
+    setOcupado(true)
+    try {
+      await apagarConta(sessao.uid)
+      try {
+        await excluirUsuario()
+      } catch {
+        /* requires-recent-login: dados já apagados; segue para sair */
+      }
+      await sairDaConta()
+      return true
+    } catch (e) {
+      setErro(mensagemDeErro(e))
+      return false
+    } finally {
+      setOcupado(false)
+    }
+  }, [sessao])
+
   const concluirOnboarding = useCallback(() => {
     try {
       localStorage.setItem(CHAVE_ONBOARDING, '1')
@@ -398,6 +425,7 @@ export function ClubeProvider({ children }) {
       entrarComGoogle,
       entrarComApple,
       sair,
+      excluirConta,
       concluirOnboarding,
       concluirCadastro,
       atualizarPerfil,
@@ -419,6 +447,7 @@ export function ClubeProvider({ children }) {
       entrarComGoogle,
       entrarComApple,
       sair,
+      excluirConta,
       concluirOnboarding,
       concluirCadastro,
       atualizarPerfil,

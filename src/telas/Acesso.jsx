@@ -6,6 +6,11 @@ import { AppBar, Tela } from '../componentes/Tela.jsx'
 import { LOGIN_APPLE } from '../firebase/config.js'
 import { Icone } from '../componentes/Icone.jsx'
 
+// Endereço público das páginas legais (public/legal). Absoluto de propósito:
+// no app nativo um link externo abre no navegador do aparelho, e é este
+// mesmo endereço que vai na ficha da Play Store e da App Store.
+const URL_LEGAL = 'https://uvini07.github.io/sua-coxinha-app/legal/'
+
 // Máscara de telefone brasileiro, só com os dígitos que o usuário digitou.
 function mascararTelefone(bruto) {
   const d = bruto.replace(/\D/g, '').slice(0, 11)
@@ -61,13 +66,16 @@ export function Entrar() {
 
         <div className="acesso__rodape pilha">
           <p className="t-peq c-sutil centro">
-            Ao continuar você concorda com os Termos de Uso e a Política de Privacidade da Sua Coxinha.
+            Ao continuar você concorda com os{' '}
+            <a href={`${URL_LEGAL}termos.html`} target="_blank" rel="noreferrer" className="c-ouro">
+              Termos de Uso
+            </a>{' '}
+            e a{' '}
+            <a href={`${URL_LEGAL}privacidade.html`} target="_blank" rel="noreferrer" className="c-ouro">
+              Política de Privacidade
+            </a>{' '}
+            da Sua Coxinha.
           </p>
-
-          <div className="acesso__prova">
-            <Icone nome="pessoas" tamanho={16} cor="var(--ouro-500)" />
-            <span className="t-peq c-secundario">Mais de 12 mil clientes no clube</span>
-          </div>
         </div>
       </div>
     </Tela>

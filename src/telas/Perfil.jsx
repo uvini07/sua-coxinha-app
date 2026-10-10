@@ -19,7 +19,8 @@ function ItemMenu({ icone, rotulo, valor, onClick }) {
 
 export function Perfil() {
   const { ir } = useRota()
-  const { usuario, nivel, vouchers, sair, papel, unidades } = useClube()
+  const { usuario, nivel, vouchers, sair, excluirConta, erro, ocupado, papel, unidades } = useClube()
+  const [excluindo, setExcluindo] = useState(false)
   const unidade = unidades.find((u) => u.id === usuario.unidade) || unidades[0]
   const ativos = vouchers.filter((v) => v.estado === 'disponivel').length
 
@@ -95,10 +96,41 @@ export function Perfil() {
         <ItemMenu icone="info" rotulo="Como os pontos funcionam" onClick={() => ir('/niveis')} />
       </section>
 
-      <div className="px mt24" style={{ paddingBottom: 16 }}>
+      <div className="px mt24" style={{ paddingBottom: 8 }}>
         <Botao estilo="fantasma" icone="sair" onClick={async () => { await sair(); ir('/entrar', { substituir: true }) }}>
           Sair da conta
         </Botao>
+      </div>
+
+      <div className="px" style={{ paddingBottom: 24 }}>
+        {excluindo ? (
+          <div className="caixa pilha g12">
+            <strong className="t-h4">Excluir sua conta?</strong>
+            <span className="t-peq c-secundario">
+              Seus pontos, vouchers, extrato e dados de cadastro serão apagados de vez. Não dá para desfazer.
+            </span>
+            {erro && (
+              <p className="aviso-teste" role="alert">
+                <span className="t-peq">{erro}</span>
+              </p>
+            )}
+            <Botao
+              desabilitado={ocupado}
+              onClick={async () => {
+                if (await excluirConta()) ir('/entrar', { substituir: true })
+              }}
+            >
+              {ocupado ? 'Excluindo…' : 'Excluir de vez'}
+            </Botao>
+            <Botao estilo="fantasma" onClick={() => setExcluindo(false)}>
+              Cancelar
+            </Botao>
+          </div>
+        ) : (
+          <button type="button" className="t-peq c-sutil centro" style={{ width: '100%' }} onClick={() => setExcluindo(true)}>
+            Excluir minha conta
+          </button>
+        )}
       </div>
     </Tela>
   )

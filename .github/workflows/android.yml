@@ -51,6 +51,13 @@ jobs:
       # A área da equipe lê QR Code pela câmera (getUserMedia dentro do
       # WebView). O Capacitor pede a permissão em tempo de execução, mas só
       # se ela estiver declarada no manifesto.
+      # Ícone e tela de abertura nativa da Sua Coxinha. Sem isto o Android
+      # mostra os do modelo do Capacitor (o "X" azul). Como android/ é gerado
+      # a cada build, os arquivos ficam em android-recursos/ e são copiados
+      # por cima aqui. Para refazer: ver android-recursos/LEIA-ME.md.
+      - name: Ícone e tela de abertura
+        run: cp -r android-recursos/res/. android/app/src/main/res/
+
       - name: Permissão de câmera
         run: |
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.CAMERA" />#' android/app/src/main/AndroidManifest.xml

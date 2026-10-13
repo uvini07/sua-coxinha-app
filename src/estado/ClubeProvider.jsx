@@ -27,10 +27,12 @@ import {
   normalizarEmail,
   observarConfig,
   carregarLojasComCache,
+  dobroVigente,
   observarLojas,
   observarMembro,
 } from '../firebase/equipe.js'
 import { iniciarAnalytics } from '../firebase/app.js'
+import { ativarPush } from '../firebase/notificacoes.js'
 
 // O estado do clube vem do Firebase: a sessão do Authentication e o documento
 // do cliente no Firestore, ouvidos em tempo real. As telas continuam vendo a
@@ -100,6 +102,7 @@ export function ClubeProvider({ children }) {
   const [membro, setMembro] = useState(undefined)
   const [regrasSalvas, setRegrasSalvas] = useState(null)
   const [catalogo, setCatalogo] = useState(null)
+  const [dobroSalvo, setDobroSalvo] = useState(null)
   const [lojasSalvas, setLojasSalvas] = useState([])
   const [lojaEscolhida, setLojaEscolhida] = useState('')
   // Quantos lançamentos do extrato ficam carregados. Começa curto (cada
@@ -179,6 +182,7 @@ export function ClubeProvider({ children }) {
     const cancelar = [
       observarConfig('regras', setRegrasSalvas, ignorar),
       observarConfig('catalogo', setCatalogo, ignorar),
+      observarConfig('dobro', setDobroSalvo, ignorar),
     ]
     return () => cancelar.forEach((c) => c())
   }, [sessao])
@@ -192,6 +196,15 @@ export function ClubeProvider({ children }) {
     const ignorar = () => {}
     return daEquipe ? observarLojas(setLojasSalvas, ignorar) : carregarLojasComCache(setLojasSalvas, ignorar)
   }, [sessao, membro === undefined, daEquipe]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Push: depois do cadastro, uma vez por sessão. No navegador não faz nada.
+  const cadastroOk = !!perfil?.cadastroCompleto
+  useEffect(() => {
+    if (sessao && cadastroOk) ativarPush(sessao.uid)
+  }, [sessao, cadastroOk])
+
+  // Promoção de pontos em dobro: só conta se estiver ligada e dentro do prazo.
+  const dobro = dobroVigente(dobroSalvo) ? dobroSalvo : null
 
   const souAdmin = !!sessao?.emailVerified && normalizarEmail(sessao?.email) === EMAIL_ADMIN
   const papel = souAdmin ? 'admin' : membro?.ativo ? membro.papel : null
@@ -420,6 +433,8 @@ export function ClubeProvider({ children }) {
       limparErro: () => setErro(''),
 
       // dados
+      dobro,
+      dobroSalvo,
       usuario,
       historicoCompleto,
       nivel,
@@ -461,6 +476,8 @@ export function ClubeProvider({ children }) {
       onboardingVisto,
       erro,
       ocupado,
+      dobro,
+      dobroSalvo,
       usuario,
       nivel,
       missoes,

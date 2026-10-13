@@ -19,6 +19,8 @@ import {
   cadastrarMembro,
   diaDeHoje,
   dispararMissao,
+  encerrarDobro,
+  lancarDobro,
   encerrarMissao,
   lerQR,
   metaDaLoja,
@@ -257,7 +259,7 @@ export function PainelEquipe() {
           {papel === 'admin' && (
             <>
               <Divisor recuo={32} />
-              <ItemEquipe icone="engrenagem" rotulo="Regras do clube e catálogo" onClick={() => ir('/equipe/regras')} />
+              <ItemEquipe icone="engrenagem" rotulo="Regras, catálogo e pontos em dobro" onClick={() => ir('/equipe/regras')} />
               <Divisor recuo={32} />
               <ItemEquipe icone="pin" rotulo="Lojas" onClick={() => ir('/equipe/lojas')} />
             </>
@@ -470,16 +472,20 @@ function CartaoCliente({ cliente }) {
 
 export function CaixaCompra() {
   const { ir } = useRota()
-  const { uid, regras, lojaOperacao, unidades } = useClube()
+  const { uid, regras, lojaOperacao, unidades, dobro } = useClube()
   const operador = useOperador()
   const [cliente, setCliente] = useState(null)
   const [valor, setValor] = useState('')
+  const [valorDobro, setValorDobro] = useState('')
   const [erro, setErro] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [feito, setFeito] = useState(null)
 
   const centavos = paraCentavos(valor)
-  const pontos = pontosDaCompra(centavos, regras.pontosPorReal)
+  // Só a parte do produto em dobro, e nunca mais que a compra inteira.
+  const centavosDobro = dobro ? Math.min(paraCentavos(valorDobro), centavos) : 0
+  const pontosExtra = pontosDaCompra(centavosDobro, regras.pontosPorReal)
+  const pontos = pontosDaCompra(centavos, regras.pontosPorReal) + pontosExtra
   const acimaDoTeto = centavos > regras.valorMaximo
   const propriaConta = cliente?.uid === uid
   const pode = cliente && centavos > 0 && !acimaDoTeto && !propriaConta && !enviando && lojaOperacao
@@ -492,6 +498,8 @@ export function CaixaCompra() {
       const r = await registrarCompraNoCaixa({
         cliente,
         valor: centavos,
+        valorDobro: centavosDobro,
+        dobro,
         loja: lojaOperacao,
         lojaNome: nomeDaLoja(unidades, lojaOperacao),
         regras,
@@ -509,6 +517,7 @@ export function CaixaCompra() {
   const recomecar = () => {
     setCliente(null)
     setValor('')
+    setValorDobro('')
     setErro('')
     setFeito(null)
   }
@@ -557,8 +566,25 @@ export function CaixaCompra() {
 
           {acimaDoTeto && <Aviso texto={`Acima do teto de ${reais(regras.valorMaximo)} por compra.`} />}
 
+          {dobro && (
+            <Campo
+              rotulo={`Quanto foi de ${dobro.produtoNome}? (pontos em dobro)`}
+              dica="Só a parte da compra que foi do produto da promoção. Deixe vazio se não teve."
+            >
+              <span className="t-h4 c-sutil">R$</span>
+              <input
+                inputMode="decimal"
+                placeholder="0,00"
+                value={valorDobro}
+                onChange={(e) => setValorDobro(mascararValor(e.target.value))}
+              />
+            </Campo>
+          )}
+
           <div className="caixa caixa--ouro linha-h entre">
-            <span className="t-corpo c-secundario">O cliente ganha</span>
+            <span className="t-corpo c-secundario">
+              O cliente ganha{pontosExtra > 0 ? ` (inclui +${pontosExtra} em dobro)` : ''}
+            </span>
             <b className="t-num-m c-ouro">{pontos.toLocaleString('pt-BR')} pts</b>
           </div>
 
@@ -1212,6 +1238,83 @@ const CAMPOS_REGRAS = [
   ['valorMaximo', 'Teto por compra (R$)', 'Compra acima disso é recusada. Freio contra erro de digitação e fraude.'],
 ]
 
+// Admin escolhe o produto e lança. Lançar grava config/dobro, e o servidor
+// manda a notificação para todos os clientes na mesma hora.
+function PontosEmDobro() {
+  const { dobro, dobroSalvo } = useClube()
+  const [produto, setProduto] = useState(RECOMPENSAS[0]?.id || '')
+  const [ate, setAte] = useState('')
+  const [erro, setErro] = useState('')
+  const [ok, setOk] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  const executar = async (fn, mensagem) => {
+    setErro('')
+    setOk('')
+    setEnviando(true)
+    try {
+      await fn()
+      setOk(mensagem)
+    } catch (e) {
+      setErro(mensagemDeErro(e))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  const escolhido = RECOMPENSAS.find((r) => r.id === produto)
+
+  return (
+    <div className="caixa caixa--ouro pilha g12">
+      <strong className="t-h4">Pontos em dobro</strong>
+      <Aviso texto={ok} tom="sucesso" />
+      <Aviso texto={erro} />
+      {dobro ? (
+        <>
+          <span className="t-corpo">
+            No ar: <b>{dobro.produtoNome}</b> rende pontos em dobro
+            {dobro.ate ? ` até ${dobro.ate.split('-').reverse().join('/')}` : ''}.
+          </span>
+          <Botao estilo="fantasma" desabilitado={enviando} onClick={() => executar(encerrarDobro, 'Promoção encerrada.')}>
+            Encerrar promoção
+          </Botao>
+        </>
+      ) : (
+        <>
+          <span className="t-peq c-secundario">
+            Escolha o produto. Ao lançar, todos os clientes recebem uma notificação e o caixa passa a pedir quanto da
+            compra foi desse produto.
+            {dobroSalvo?.ativo === false && dobroSalvo.produtoNome ? ` Última: ${dobroSalvo.produtoNome}.` : ''}
+          </span>
+          <div className="linha-h g8" style={{ flexWrap: 'wrap' }}>
+            {RECOMPENSAS.map((r) => (
+              <Chip key={r.id} ativo={produto === r.id} onClick={() => setProduto(r.id)}>
+                {r.nome}
+              </Chip>
+            ))}
+          </div>
+          <Campo rotulo="Até (opcional)" dica="Sem data, fica no ar até você encerrar.">
+            <Icone nome="calendario" tamanho={19} cor="var(--ouro-500)" />
+            <input type="date" value={ate} min={diaDeHoje()} onChange={(e) => setAte(e.target.value)} />
+          </Campo>
+          <Botao
+            icone="raio"
+            desabilitado={!escolhido || enviando}
+            onClick={() =>
+              executar(
+                () => lancarDobro({ produtoId: escolhido.id, produtoNome: escolhido.nome, ate }),
+                `Lançado! Os clientes estão sendo avisados: ${escolhido.nome} em dobro.`,
+              )
+            }
+          >
+            {escolhido ? `Lançar dobro de pontos: ${escolhido.nome}` : 'Lançar dobro de pontos'}
+          </Botao>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function RegrasClube() {
   const { regras, recompensas, catalogoPublicado } = useClube()
   const [form, setForm] = useState(null)
@@ -1287,7 +1390,9 @@ export function RegrasClube() {
         <Aviso texto={ok} tom="sucesso" />
         <Aviso texto={erro} />
 
-        <span className="t-overline c-sutil">Pontuação</span>
+        <PontosEmDobro />
+
+        <span className="t-overline c-sutil mt16">Pontuação</span>
         {CAMPOS_REGRAS.map(([chave, rotulo, dica]) => (
           <Campo key={chave} rotulo={rotulo} dica={`${dica} Padrão: ${chave === 'valorMaximo' ? REGRAS_PADRAO[chave] / 100 : REGRAS_PADRAO[chave]}.`}>
             <input

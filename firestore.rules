@@ -263,12 +263,30 @@ service cloud.firestore {
         return request.resource.data;
       }
 
+      // Pontos em dobro: a parte da compra que foi do produto da promoção
+      // (`valorDobro`) rende de novo, mas só com a promoção ligada pelo admin
+      // em config/dobro, e nunca mais do que o valor da compra.
+      function dobroLigado() {
+        let c = /databases/$(database)/documents/config/dobro;
+        return exists(c) && get(c).data.get('ativo', false) == true;
+      }
+
+      function pontosOk() {
+        let vd = novo().get('valorDobro', 0);
+        let base = novo().get('pontosBase', novo().pontos);
+        let pd = novo().get('pontosDobro', 0);
+        return vd is int && vd >= 0 && vd <= novo().valor
+            && piso(base, novo().valor, regras().pontosPorReal)
+            && ((vd == 0 && pd == 0) || (vd > 0 && dobroLigado() && piso(pd, vd, regras().pontosPorReal)))
+            && novo().pontos == base + pd;
+      }
+
       function compraOk() {
         return novo().tipo == 'compra'
             && novo().valor is int
             && novo().valor > 0
             && novo().valor <= regras().valorMaximo
-            && piso(novo().pontos, novo().valor, regras().pontosPorReal)
+            && pontosOk()
             && piso(novo().pontosEquipe, novo().valor, metaPorReal(novo().loja))
             && getAfter(/databases/$(database)/documents/usuarios/$(novo().cliente)).data.ultimoLancamento == id;
       }
@@ -416,6 +434,7 @@ service cloud.firestore {
 
     // config/regras   — pontos por real, teto por compra, metas da equipe
     // config/catalogo — preço em pontos de cada recompensa
+    // config/dobro    — produto com pontos em dobro (lançado pelo admin)
     match /config/{documento} {
       allow read: if logado();
       allow write: if souAdmin();

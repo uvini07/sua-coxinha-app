@@ -24,7 +24,7 @@ const ATALHOS = [
 
 export function Home() {
   const { ir } = useRota()
-  const { usuario, nivel, missoes, recompensas, historico, naoLidas, papel, vouchers } = useClube()
+  const { usuario, nivel, missoes, recompensas, historico, naoLidas, papel, vouchers, dobro } = useClube()
   const vouchersAtivos = vouchers.filter((v) => v.estado === 'disponivel').length
 
   const missaoDestaque = missoes.find((m) => !m.concluida && !m.bloqueada) || missoes[0]
@@ -67,6 +67,21 @@ export function Home() {
           onClick={() => ir('/carteira')}
         />
       </div>
+
+      {dobro && (
+        <div className="px mt16">
+          <div className="home__dobro">
+            <b className="home__dobro-selo">2×</b>
+            <span className="cresce pilha g4">
+              <strong className="t-forte">Pontos em dobro</strong>
+              <span className="t-peq">
+                {dobro.produtoNome} vale o dobro de pontos
+                {dobro.ate ? ` até ${dobro.ate.split('-').reverse().join('/')}` : ' por tempo limitado'}.
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="home__atalhos px mt16">
         {ATALHOS.map((a) => (

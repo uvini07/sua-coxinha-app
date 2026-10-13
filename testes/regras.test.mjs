@@ -83,14 +83,17 @@ const ler = async (caminho) => {
 const hoje = '2026-10-08'
 const piso = (centavos, taxa) => Math.floor((centavos * taxa) / 100)
 
-function loteDeCompra(db, { cliente, valor, loja, email, uid, comMeta = true, pontos, pontosEquipe }) {
+function loteDeCompra(db, { cliente, valor, loja, email, uid, comMeta = true, pontos, pontosEquipe, valorDobro = 0, pontosDobro }) {
   const ref = doc(collection(db, 'lancamentos'))
   const id = ref.id
-  pontos ??= piso(valor, REGRAS.pontosPorReal)
+  pontosDobro ??= valorDobro ? piso(valorDobro, REGRAS.pontosPorReal) : 0
+  const pontosBase = piso(valor, REGRAS.pontosPorReal)
+  pontos ??= pontosBase + pontosDobro
   pontosEquipe ??= piso(valor, REGRAS.metaPontosPorReal)
   const lote = writeBatch(db)
   lote.set(ref, {
     tipo: 'compra', cliente, clienteNome: 'Cliente', loja, valor, pontos, pontosEquipe,
+    ...(valorDobro || pontosDobro ? { pontosBase, valorDobro, pontosDobro, produtoDobro: 'Coxinha G' } : {}),
     operador: email, operadorUid: uid, operadorNome: 'x', dia: hoje, criadoEm: serverTimestamp(),
   })
   lote.update(doc(db, 'usuarios', cliente), {
@@ -429,6 +432,33 @@ await teste('franqueado encerra e apaga a missão', async () => {
 })
 await teste('admin dispara missão em qualquer loja', () =>
   assertSucceeds(setDoc(doc(admin, 'missoesEquipe', 'm6'), missao({ loja: 'jundiai', criadoPor: ADMIN_EMAIL }))))
+
+console.log('\n== pontos em dobro ==')
+const metaCaj = (v) => piso(v, 3) // cajamar tem meta própria (3 por real) desde os testes de meta
+await teste('RECUSA dobro com a promoção desligada', () =>
+  assertFails(loteDeCompra(func, { cliente: 'cli', valor: 3000, valorDobro: 1490, loja: 'cajamar', email: 'func@ex.com', uid: 'func', pontosEquipe: metaCaj(3000) }).lote.commit()))
+await teste('RECUSA cliente ou funcionário ligar a promoção', async () => {
+  await assertFails(setDoc(doc(func, 'config', 'dobro'), { ativo: true, produtoId: 'coxinha-g', produtoNome: 'Coxinha G', ate: '' }))
+  await assertFails(setDoc(doc(cli, 'config', 'dobro'), { ativo: true, produtoId: 'coxinha-g', produtoNome: 'Coxinha G', ate: '' }))
+})
+await teste('admin lança dobro na Coxinha G', () =>
+  assertSucceeds(setDoc(doc(admin, 'config', 'dobro'), { ativo: true, produtoId: 'coxinha-g', produtoNome: 'Coxinha G', ate: '', lancadoEm: serverTimestamp() })))
+await teste('compra com R$ 14,90 de Coxinha G rende o dobro dessa parte', async () => {
+  const antes = (await ler(['usuarios', 'cli'])).saldo
+  await assertSucceeds(loteDeCompra(func, { cliente: 'cli', valor: 3000, valorDobro: 1490, loja: 'cajamar', email: 'func@ex.com', uid: 'func', pontosEquipe: metaCaj(3000) }).lote.commit())
+  const depois = (await ler(['usuarios', 'cli'])).saldo
+  if (depois - antes !== 60 + 29) throw new Error(`creditou ${depois - antes}`)
+})
+await teste('RECUSA parte em dobro maior que a compra', () =>
+  assertFails(loteDeCompra(func, { cliente: 'cli', valor: 1000, valorDobro: 2000, loja: 'cajamar', email: 'func@ex.com', uid: 'func', pontosEquipe: metaCaj(1000) }).lote.commit()))
+await teste('RECUSA pontos em dobro inflados', () =>
+  assertFails(loteDeCompra(func, { cliente: 'cli', valor: 3000, valorDobro: 1490, pontosDobro: 500, loja: 'cajamar', email: 'func@ex.com', uid: 'func', pontosEquipe: metaCaj(3000) }).lote.commit()))
+await teste('compra comum continua valendo com a promoção ligada', () =>
+  assertSucceeds(loteDeCompra(func, { cliente: 'cli', valor: 2000, loja: 'cajamar', email: 'func@ex.com', uid: 'func', pontosEquipe: metaCaj(2000) }).lote.commit()))
+await teste('cliente guarda o token do celular no perfil', () =>
+  assertSucceeds(updateDoc(doc(cli, 'usuarios', 'cli'), { pushTokens: ['token-de-teste'] })))
+await teste('admin encerra a promoção', () =>
+  assertSucceeds(updateDoc(doc(admin, 'config', 'dobro'), { ativo: false, encerradoEm: serverTimestamp() })))
 
 console.log('\n== reserva de telefone ==')
 const NUM = '+5511971813986'

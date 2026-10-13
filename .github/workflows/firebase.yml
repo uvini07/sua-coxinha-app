@@ -1,0 +1,73 @@
+# Publica no Firebase as regras do Firestore e as funções do servidor
+# (notificações push). Roda sozinho quando uma dessas partes muda no main.
+#
+# Precisa, uma vez:
+#   1. Plano Blaze no projeto (Firebase → Uso e faturamento). As funções não
+#      rodam no plano gratuito.
+#   2. Uma chave de conta de serviço: Google Cloud → IAM → Contas de serviço →
+#      firebase-adminsdk → Chaves → Adicionar chave (JSON). Cole o conteúdo
+#      inteiro no secret FIREBASE_SERVICE_ACCOUNT.
+#   3. (Opcional) Variável REGIAO_FUNCOES com a região do banco, se não for
+#      southamerica-east1. Settings → Secrets and variables → Actions → Variables.
+#
+# Sem o secret, o workflow avisa e não faz nada — não quebra os outros builds.
+
+name: Publicar no Firebase (regras e funções)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - firestore.rules
+      - firebase.json
+      - functions/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    name: Regras e funções
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir a chave
+        id: chave
+        env:
+          CHAVE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$CHAVE" ]; then
+            echo "::warning::Secret FIREBASE_SERVICE_ACCOUNT ausente. Regras e funções não foram publicadas. Veja o topo deste arquivo."
+            echo "ok=nao" >> "$GITHUB_OUTPUT"
+          else
+            printf '%s' "$CHAVE" > "$RUNNER_TEMP/chave.json"
+            echo "ok=sim" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.chave.outputs.ok == 'sim'
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar
+        if: steps.chave.outputs.ok == 'sim'
+        run: |
+          npm ci
+          npm ci --prefix functions
+
+      - name: Região das funções
+        if: steps.chave.outputs.ok == 'sim'
+        run: echo "REGIAO_FUNCOES=${{ vars.REGIAO_FUNCOES || 'southamerica-east1' }}" > functions/.env
+
+      - name: Publicar
+        if: steps.chave.outputs.ok == 'sim'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/chave.json
+        run: npx firebase deploy --only firestore:rules,functions --project suacoxinhaapp --non-interactive --force

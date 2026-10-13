@@ -224,6 +224,30 @@ export function progressoNaMissao(missao, membro) {
 // Prazo vencido: a missão sai das ativas, mesmo sem ninguém encerrar.
 export const missaoVencida = (missao, hoje = diaDeHoje()) => !!missao.prazo && missao.prazo < hoje
 
+// --- Pontos em dobro ---------------------------------------------------------
+//
+// `config/dobro`: o admin escolhe um produto e lança. Enquanto estiver ativo,
+// o caixa informa quanto da compra foi desse produto e essa parte rende o
+// dobro. Lançar dispara a notificação para todos os clientes (functions/).
+
+// "2026-10-20" ou '' (sem data de fim). Vale até o fim do dia informado.
+export const dobroVigente = (dobro, hoje = diaDeHoje()) =>
+  !!dobro?.ativo && !!dobro.produtoId && (!dobro.ate || dobro.ate >= hoje)
+
+export function lancarDobro({ produtoId, produtoNome, ate }) {
+  return setDoc(doc(db, 'config', 'dobro'), {
+    ativo: true,
+    produtoId,
+    produtoNome,
+    ate: ate || '',
+    lancadoEm: serverTimestamp(),
+  })
+}
+
+export function encerrarDobro() {
+  return updateDoc(doc(db, 'config', 'dobro'), { ativo: false, encerradoEm: serverTimestamp() })
+}
+
 // --- Pessoas da equipe -----------------------------------------------------
 
 export function observarEquipe(loja, aoMudar, aoFalhar) {
@@ -301,10 +325,14 @@ export const pontosDaCompra = (centavos, taxa) => Math.floor((centavos * taxa) /
 // soma na meta de quem registrou. `operador` é { email, uid, membro } — sem
 // `membro` (o admin) não há meta para somar.
 // `meta` são as taxas de meta da loja (ver `metaDaLoja`).
-export async function registrarCompraNoCaixa({ cliente, valor, loja, lojaNome, regras, meta, operador }) {
+// `valorDobro` (centavos): a parte da compra que foi do produto em dobro.
+// Rende pontos de novo, por cima dos normais. 0 quando não há promoção.
+export async function registrarCompraNoCaixa({ cliente, valor, valorDobro = 0, dobro, loja, lojaNome, regras, meta, operador }) {
   const ref = doc(collection(db, 'lancamentos'))
   const id = ref.id
-  const pontos = pontosDaCompra(valor, regras.pontosPorReal)
+  const pontosBase = pontosDaCompra(valor, regras.pontosPorReal)
+  const pontosDobro = valorDobro > 0 ? pontosDaCompra(valorDobro, regras.pontosPorReal) : 0
+  const pontos = pontosBase + pontosDobro
   const pontosEquipe = pontosDaCompra(valor, meta.pontosPorReal)
   const lote = writeBatch(db)
 
@@ -315,6 +343,10 @@ export async function registrarCompraNoCaixa({ cliente, valor, loja, lojaNome, r
     loja,
     valor,
     pontos,
+    pontosBase,
+    valorDobro: pontosDobro ? valorDobro : 0,
+    pontosDobro,
+    produtoDobro: pontosDobro ? dobro?.produtoNome || '' : '',
     pontosEquipe,
     operador: normalizarEmail(operador.email),
     operadorUid: operador.uid,
@@ -340,7 +372,9 @@ export async function registrarCompraNoCaixa({ cliente, valor, loja, lojaNome, r
   })
   lote.set(doc(db, 'usuarios', cliente.uid, 'notificacoes', id), {
     titulo: `+${pontos} pontos`,
-    texto: `Compra de ${(valor / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} na unidade ${lojaNome}.`,
+    texto: `Compra de ${(valor / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} na unidade ${lojaNome}.${
+      pontosDobro ? ` Inclui +${pontosDobro} em dobro no ${dobro?.produtoNome || 'produto da promoção'}.` : ''
+    }`,
     icone: 'brilho',
     nova: true,
     criadoEm: serverTimestamp(),

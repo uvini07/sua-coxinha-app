@@ -4,7 +4,7 @@ import { useClube } from '../estado/clubeContexto.js'
 import { AppBar, NavInferior, Tela } from '../componentes/Tela.jsx'
 import { CartaoDourado } from '../componentes/CartaoDourado.jsx'
 import { LinhaHistorico } from '../componentes/cartoes.jsx'
-import { Brilho, CabecalhoSecao, Chip, Divisor, Vazio } from '../componentes/primitivos.jsx'
+import { Botao, Brilho, CabecalhoSecao, Chip, Divisor, Vazio } from '../componentes/primitivos.jsx'
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
@@ -109,7 +109,7 @@ const FILTROS = [
 ]
 
 export function Historico() {
-  const { historico } = useClube()
+  const { historico, historicoCompleto, carregarMaisHistorico } = useClube()
   const [filtro, setFiltro] = useState('tudo')
 
   const lista = useMemo(() => {
@@ -151,6 +151,14 @@ export function Historico() {
           </div>
         </section>
       ))}
+
+      {!historicoCompleto && (
+        <div className="px mt24" style={{ paddingBottom: 24 }}>
+          <Botao estilo="fantasma" onClick={carregarMaisHistorico}>
+            Ver lançamentos mais antigos
+          </Botao>
+        </div>
+      )}
     </Tela>
   )
 }

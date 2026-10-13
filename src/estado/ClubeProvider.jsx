@@ -26,6 +26,7 @@ import {
   REGRAS_PADRAO,
   normalizarEmail,
   observarConfig,
+  carregarLojasComCache,
   observarLojas,
   observarMembro,
 } from '../firebase/equipe.js'
@@ -39,6 +40,7 @@ import { iniciarAnalytics } from '../firebase/app.js'
 // isso é anterior ao login e não pertence a nenhuma conta.
 
 const CHAVE_ONBOARDING = 'pontos-dourados:onboarding'
+const LIMITE_HISTORICO = 30
 
 const lerOnboarding = () => {
   try {
@@ -100,6 +102,9 @@ export function ClubeProvider({ children }) {
   const [catalogo, setCatalogo] = useState(null)
   const [lojasSalvas, setLojasSalvas] = useState([])
   const [lojaEscolhida, setLojaEscolhida] = useState('')
+  // Quantos lançamentos do extrato ficam carregados. Começa curto (cada
+  // documento é uma leitura) e cresce quando o cliente pede mais.
+  const [limiteHistorico, setLimiteHistorico] = useState(LIMITE_HISTORICO)
 
   // A tela de notificações marca tudo como lido na saída
   // (`useEffect(() => () => lerNotificacoes(), ...)`). Para isso a função
@@ -140,12 +145,19 @@ export function ClubeProvider({ children }) {
     const aoFalhar = (e) => setErro(mensagemDeErro(e))
     const cancelar = [
       observarPerfil(sessao.uid, setPerfil, aoFalhar),
-      observarColecao(sessao.uid, 'historico', setHistorico, aoFalhar),
-      observarColecao(sessao.uid, 'vouchers', setVouchers, aoFalhar),
-      observarColecao(sessao.uid, 'notificacoes', setNotificacoes, aoFalhar),
+      observarColecao(sessao.uid, 'vouchers', setVouchers, aoFalhar, 50),
+      observarColecao(sessao.uid, 'notificacoes', setNotificacoes, aoFalhar, 30),
     ]
     return () => cancelar.forEach((c) => c())
   }, [sessao])
+
+  useEffect(() => {
+    if (!sessao) return undefined
+    return observarColecao(sessao.uid, 'historico', setHistorico, (e) => setErro(mensagemDeErro(e)), limiteHistorico)
+  }, [sessao, limiteHistorico])
+
+  const carregarMaisHistorico = useCallback(() => setLimiteHistorico((n) => n + LIMITE_HISTORICO), [])
+  const historicoCompleto = historico.length < limiteHistorico
 
   // --- Papel na equipe e regras do clube ----------------------------------
 
@@ -167,10 +179,19 @@ export function ClubeProvider({ children }) {
     const cancelar = [
       observarConfig('regras', setRegrasSalvas, ignorar),
       observarConfig('catalogo', setCatalogo, ignorar),
-      observarLojas(setLojasSalvas, ignorar),
     ]
     return () => cancelar.forEach((c) => c())
   }, [sessao])
+
+  // Lojas: ao vivo para quem é da equipe (cria e edita lojas, opera o caixa);
+  // para o cliente, do cache do aparelho. Espera saber se a pessoa é da
+  // equipe (`membro` deixa de ser undefined) para não abrir as duas leituras.
+  const daEquipe = (!!sessao?.emailVerified && normalizarEmail(sessao?.email) === EMAIL_ADMIN) || !!membro?.ativo
+  useEffect(() => {
+    if (!sessao || membro === undefined) return undefined
+    const ignorar = () => {}
+    return daEquipe ? observarLojas(setLojasSalvas, ignorar) : carregarLojasComCache(setLojasSalvas, ignorar)
+  }, [sessao, membro === undefined, daEquipe]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const souAdmin = !!sessao?.emailVerified && normalizarEmail(sessao?.email) === EMAIL_ADMIN
   const papel = souAdmin ? 'admin' : membro?.ativo ? membro.papel : null
@@ -400,6 +421,7 @@ export function ClubeProvider({ children }) {
 
       // dados
       usuario,
+      historicoCompleto,
       nivel,
       missoes,
       recompensas,
@@ -426,6 +448,7 @@ export function ClubeProvider({ children }) {
       entrarComApple,
       sair,
       excluirConta,
+      carregarMaisHistorico,
       concluirOnboarding,
       concluirCadastro,
       atualizarPerfil,
@@ -448,6 +471,8 @@ export function ClubeProvider({ children }) {
       entrarComApple,
       sair,
       excluirConta,
+      carregarMaisHistorico,
+      historicoCompleto,
       concluirOnboarding,
       concluirCadastro,
       atualizarPerfil,

@@ -5,13 +5,33 @@
 
 import { getApp, getApps, initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore'
 import { firebaseConfig } from './config.js'
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
-export const db = getFirestore(app)
+// Cache persistente no aparelho (IndexedDB). Ao reabrir o app, o Firestore
+// mostra o que já tinha guardado e, nas consultas retomadas, só cobra pelo que
+// mudou — em vez de reler perfil, extrato e vouchers inteiros a cada abertura.
+// Se o navegador não suportar (modo privado, IndexedDB bloqueado) ou o
+// Firestore já tiver sido iniciado (hot-reload), cai no modo normal.
+function iniciarFirestore() {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    })
+  } catch {
+    return getFirestore(app)
+  }
+}
+
+export const db = iniciarFirestore()
 
 // O idioma vale para as telas de login do Google e da Apple.
 auth.languageCode = 'pt-BR'

@@ -94,6 +94,43 @@ export function observarLojas(aoMudar, aoFalhar) {
   return onSnapshot(collection(db, 'lojas'), (snap) => aoMudar(lista(snap)), aoFalhar)
 }
 
+// Para o cliente, a lista de lojas muda raramente (loja nova, endereço) e
+// não precisa de tempo real: ler as ~25 lojas a cada abertura do app era a
+// maior fatia das leituras. Fica guardada no aparelho por 12 h. A equipe
+// continua com `observarLojas`, ao vivo.
+const CHAVE_LOJAS = 'pontos-dourados:lojas'
+const VALIDADE_LOJAS = 12 * 60 * 60 * 1000
+
+function lerLojasGuardadas() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_LOJAS) || 'null')
+    return salvo && Array.isArray(salvo.lojas) ? salvo : null
+  } catch {
+    return null
+  }
+}
+
+export function carregarLojasComCache(aoMudar, aoFalhar) {
+  const salvo = lerLojasGuardadas()
+  if (salvo) aoMudar(salvo.lojas)
+  if (salvo && Date.now() - salvo.em < VALIDADE_LOJAS) return () => {}
+  let ativo = true
+  getDocs(collection(db, 'lojas'))
+    .then((snap) => {
+      const lojas = lista(snap)
+      try {
+        localStorage.setItem(CHAVE_LOJAS, JSON.stringify({ em: Date.now(), lojas }))
+      } catch {
+        /* sem storage: na próxima abertura lê de novo, só isso */
+      }
+      if (ativo) aoMudar(lojas)
+    })
+    .catch((e) => ativo && aoFalhar?.(e))
+  return () => {
+    ativo = false
+  }
+}
+
 export function salvarLoja(id, dados) {
   return setDoc(doc(db, 'lojas', id), { ...dados, atualizadoEm: serverTimestamp() }, { merge: true })
 }

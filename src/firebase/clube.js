@@ -121,8 +121,10 @@ export function observarPerfil(uid, aoMudar, aoFalhar) {
 }
 
 // Histórico, vouchers e notificações: sempre do mais novo para o mais velho.
-// O limite existe para que uma conta de anos não baixe tudo no celular.
-export function observarColecao(uid, nome, aoMudar, aoFalhar, quantidade = 200) {
+// O limite existe para que uma conta de anos não baixe tudo no celular — e
+// cada documento baixado é uma leitura cobrada. Quem quiser ver mais antigo
+// pede na tela do extrato (o provider aumenta o limite).
+export function observarColecao(uid, nome, aoMudar, aoFalhar, quantidade = 30) {
   const consulta = query(refColecao(uid, nome), orderBy('criadoEm', 'desc'), limit(quantidade))
   return onSnapshot(
     consulta,

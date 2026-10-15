@@ -64,7 +64,10 @@ jobs:
 
       - name: Região das funções
         if: steps.chave.outputs.ok == 'sim'
-        run: echo "REGIAO_FUNCOES=${{ vars.REGIAO_FUNCOES || 'southamerica-east1' }}" > functions/.env
+        run: |
+          echo "REGIAO_FUNCOES=${{ vars.REGIAO_FUNCOES || 'southamerica-east1' }}" > functions/.env
+          # Propriedade do GA4 lida pelo painel do franqueado no site (relatorioSite).
+          echo "GA_PROPERTY_ID=${{ vars.GA_PROPERTY_ID }}" >> functions/.env
 
       - name: Publicar
         if: steps.chave.outputs.ok == 'sim'

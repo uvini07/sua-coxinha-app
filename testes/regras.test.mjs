@@ -483,6 +483,35 @@ await teste('apaga extrato, vouchers, avisos e a conta', async () => {
   await assertSucceeds(deleteDoc(doc(cli, 'usuarios', 'cli')))
 })
 
+console.log('\n== contadores do site ==')
+// O site grava com set+merge de { _k, [chave]: increment(n) } (src/analytics/contadores.js no site).
+const DIA = '2026-10-15'
+const contar = (db, loja, chave, n = 1) =>
+  setDoc(doc(db, 'sitePorLoja', loja, 'dias', DIA), { _k: chave, [chave]: increment(n) }, { merge: true })
+await teste('visitante anônimo cria o contador do dia', () => assertSucceeds(contar(anonimo, 'cajamar', 'pv')))
+await teste('visitante soma +1 de novo', () => assertSucceeds(contar(anonimo, 'cajamar', 'pv')))
+await teste('visitante soma outra chave', () => assertSucceeds(contar(anonimo, 'cajamar', 'pedido_ifood')))
+await teste('soma valor do pedido no WhatsApp', () => assertSucceeds(contar(anonimo, 'cajamar', 'valor_whatsapp', 4590)))
+await teste('RECUSA somar +5 numa chave comum', () => assertFails(contar(anonimo, 'cajamar', 'pv', 5)))
+await teste('RECUSA valor acima de R$ 2.000', () => assertFails(contar(anonimo, 'cajamar', 'valor_whatsapp', 300000)))
+await teste('RECUSA loja que não existe', () => assertFails(contar(anonimo, 'loja-falsa', 'pv')))
+await teste('RECUSA dia com formato errado', () =>
+  assertFails(setDoc(doc(anonimo, 'sitePorLoja', 'cajamar', 'dias', 'ontem'), { _k: 'pv', pv: 1 })))
+await teste('RECUSA mudar duas chaves de uma vez', () =>
+  assertFails(setDoc(doc(anonimo, 'sitePorLoja', 'cajamar', 'dias', DIA), { _k: 'pv', pv: increment(1), visita: increment(1) }, { merge: true })))
+await teste('RECUSA zerar um contador', () =>
+  assertFails(setDoc(doc(anonimo, 'sitePorLoja', 'cajamar', 'dias', DIA), { _k: 'pv', pv: 0 }, { merge: true })))
+await teste('RECUSA visitante ler os números', () =>
+  assertFails(getDoc(doc(anonimo, 'sitePorLoja', 'cajamar', 'dias', DIA))))
+await teste('franqueado lê os dias da própria loja', () =>
+  assertSucceeds(getDocs(collection(franq, 'sitePorLoja', 'cajamar', 'dias'))))
+await teste('RECUSA franqueado ler outra loja', () =>
+  assertFails(getDocs(collection(franq, 'sitePorLoja', 'jundiai', 'dias'))))
+await teste('RECUSA funcionário ler os números', () =>
+  assertFails(getDocs(collection(func, 'sitePorLoja', 'cajamar', 'dias'))))
+await teste('admin lê qualquer loja', () =>
+  assertSucceeds(getDocs(collection(admin, 'sitePorLoja', 'jundiai', 'dias'))))
+
 console.log('\n== fora do previsto ==')
 await teste('RECUSA qualquer outra coleção', () =>
   assertFails(setDoc(doc(cli, 'segredo', 'x'), { x: 1 })))

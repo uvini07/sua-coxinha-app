@@ -458,6 +458,49 @@ service cloud.firestore {
       allow list: if false;
     }
 
+    // --- Contadores do site (www.suacoxinhaloja.com.br) ---------------------
+    //
+    // O site soma +1 em contadores anônimos do dia de cada loja (visitas,
+    // cliques no iFood/99/WhatsApp...). Qualquer visitante escreve, sem login,
+    // mas só +1 numa única chave por escrita, só em loja que existe, e o
+    // campo `_k` diz qual chave mudou. `valor_whatsapp` soma o valor do pedido
+    // em centavos (até R$ 2.000 por pedido). Nenhum dado pessoal é gravado.
+    // O painel do franqueado (site /painel) lê só a própria loja.
+
+    match /sitePorLoja/{loja}/dias/{dia} {
+      function chaveOk(k) {
+        return k is string && k.matches('^[a-z0-9_-]{1,48}$') && k != '_k';
+      }
+
+      function passoOk(k, antes, depois) {
+        return depois is int
+            && (k == 'valor_whatsapp'
+                  ? depois - antes > 0 && depois - antes <= 200000
+                  : depois == antes + 1);
+      }
+
+      function lojaOk() {
+        return dia.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && exists(/databases/$(database)/documents/lojas/$(loja));
+      }
+
+      allow read: if souAdmin() || (souFranqueado() && minhaLoja() == loja);
+
+      allow create: if lojaOk()
+                    && chaveOk(request.resource.data._k)
+                    && request.resource.data.keys().hasOnly(['_k', request.resource.data._k])
+                    && passoOk(request.resource.data._k, 0, request.resource.data[request.resource.data._k]);
+
+      allow update: if chaveOk(request.resource.data._k)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['_k', request.resource.data._k])
+                    && request.resource.data.keys().size() <= 300
+                    && passoOk(request.resource.data._k,
+                               resource.data.get(request.resource.data._k, 0),
+                               request.resource.data[request.resource.data._k]);
+
+      allow delete: if souAdmin();
+    }
+
     // Nada mais no banco é alcançável pelo app.
     match /{documento=**} {
       allow read, write: if false;

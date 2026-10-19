@@ -149,10 +149,12 @@ export function Cadastro() {
           <label className="campo__caixa">
             <Icone nome="calendario" tamanho={19} cor="var(--texto-sutil)" />
             <input
+              type="date"
               value={nascimento}
               onChange={(e) => setNascimento(e.target.value)}
-              placeholder="dd/mm/aaaa"
-              inputMode="numeric"
+              min="1900-01-01"
+              max={new Date().toISOString().slice(0, 10)}
+              autoComplete="bday"
             />
           </label>
           <span className="t-peq c-sutil">No mês do seu aniversário os pontos valem em dobro.</span>

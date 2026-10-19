@@ -354,7 +354,7 @@ export function ClubeProvider({ children }) {
 
   // Fecha o cadastro: grava os dados da etapa 2 e libera o app.
   const concluirCadastro = useCallback(
-    async ({ nome, telefone, nascimento, unidade, novidades }) => {
+    async ({ nome, telefone, nascimento, unidade }) => {
       if (!sessao) return false
       const e164 = paraE164(telefone)
       setErro('')
@@ -371,7 +371,7 @@ export function ClubeProvider({ children }) {
           nascimento,
           unidade,
           aceiteTermos: true,
-          aceiteNovidades: !!novidades,
+          aceiteNovidades: true,
           cadastroCompleto: true,
         })
         return true

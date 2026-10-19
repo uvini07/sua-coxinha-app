@@ -4,6 +4,7 @@ import { useClube } from '../estado/clubeContexto.js'
 import { Botao, Brilho } from '../componentes/primitivos.jsx'
 import { AppBar, Tela } from '../componentes/Tela.jsx'
 import { LOGIN_APPLE } from '../firebase/config.js'
+import { telefoneValido as celularValido } from '../firebase/autenticacao.js'
 import { Icone } from '../componentes/Icone.jsx'
 
 // Endereço público das páginas legais (public/legal). Absoluto de propósito:
@@ -90,7 +91,7 @@ export function Cadastro() {
   const [nascimento, setNascimento] = useState(usuario.nascimento)
   const [unidade, setUnidade] = useState(usuario.unidade)
   const [aceite, setAceite] = useState(false)
-  const [novidades, setNovidades] = useState(true)
+  const [telefoneTocado, setTelefoneTocado] = useState(false)
 
   // Entrando pelo Google, o nome já vem da conta — mas só depois de o perfil
   // chegar do Firestore, que pode ser um quadro depois desta tela montar.
@@ -98,12 +99,13 @@ export function Cadastro() {
     if (!nome && usuario.nome) setNome(usuario.nome)
   }, [usuario.nome, nome])
 
-  const telefoneValido = telefone.replace(/\D/g, '').length >= 10
+  const telefoneValido = celularValido(telefone)
+  const telefoneInvalido = telefoneTocado && telefone && !telefoneValido
   const podeConcluir = nome.trim() && telefoneValido && aceite && !ocupado
 
   const concluir = async () => {
     if (!podeConcluir) return
-    if (await concluirCadastro({ nome, telefone, nascimento, unidade, novidades })) {
+    if (await concluirCadastro({ nome, telefone, nascimento, unidade })) {
       ir('/celebracao/boas-vindas', { substituir: true })
     }
   }
@@ -126,7 +128,7 @@ export function Cadastro() {
           </label>
         </div>
 
-        <div className="campo">
+        <div className={`campo${telefoneInvalido ? ' campo--erro' : ''}`}>
           <span className="t-overline c-secundario">Telefone / WhatsApp</span>
           <label className="campo__caixa">
             <Icone nome="usuario" tamanho={19} cor="var(--ouro-500)" />
@@ -137,10 +139,14 @@ export function Cadastro() {
               placeholder="(11) 90000-0000"
               value={telefone}
               onChange={(e) => setTelefone(mascararTelefone(e.target.value))}
+              onBlur={() => setTelefoneTocado(true)}
+              aria-invalid={telefoneInvalido}
             />
           </label>
-          <span className="t-peq c-sutil">
-            É o número que você informa no caixa. Confira com atenção: ele identifica seus pontos.
+          <span className={`t-peq ${telefoneInvalido ? 'c-erro' : 'c-sutil'}`} role={telefoneInvalido ? 'alert' : undefined}>
+            {telefoneInvalido
+              ? 'Número inválido. Use o celular com DDD, por exemplo (11) 98765-4321.'
+              : 'É o número que você informa no caixa. Confira com atenção: ele identifica seus pontos.'}
           </span>
         </div>
 
@@ -177,23 +183,23 @@ export function Cadastro() {
       </div>
 
       <div className="px pilha g12 mt24">
-        {[
-          [aceite, setAceite, 'Aceito os Termos de Uso e a Política de Privacidade.', 'Obrigatório para participar do clube.'],
-          [novidades, setNovidades, 'Quero receber ofertas e avisos de pontos.', 'Por WhatsApp e notificações do app.'],
-        ].map(([valor, setar, titulo, sub], i) => (
-          <button
-            key={i}
-            type="button"
-            className={`aceite${valor ? ' aceite--marcado' : ''}`}
-            onClick={() => setar(!valor)}
-          >
-            <span className="aceite__caixa">{valor && <Icone nome="check" tamanho={15} cor="var(--marrom-churros)" />}</span>
-            <span className="pilha g4">
-              <strong className="t-forte">{titulo}</strong>
-              <span className="t-peq c-sutil">{sub}</span>
-            </span>
-          </button>
-        ))}
+        <button
+          type="button"
+          className={`aceite${aceite ? ' aceite--marcado' : ''}`}
+          onClick={() => setAceite(!aceite)}
+        >
+          <span className="aceite__caixa">{aceite && <Icone nome="check" tamanho={15} cor="var(--marrom-churros)" />}</span>
+          <span className="pilha g4">
+            <strong className="t-forte">
+              Li e aceito os{' '}
+              <a href={`${URL_LEGAL}termos.html`} target="_blank" rel="noreferrer" className="c-ouro" onClick={(e) => e.stopPropagation()}>
+                Termos de Uso e Privacidade
+              </a>
+              , incluindo o recebimento de ofertas e avisos de pontos.
+            </strong>
+            <span className="t-peq c-sutil">Por WhatsApp e notificações do app. Obrigatório para participar do clube.</span>
+          </span>
+        </button>
       </div>
 
       <Erro texto={erro} />

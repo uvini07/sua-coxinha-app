@@ -43,4 +43,5 @@ module.exports = {
   pdvTerminais: chamavel('listarTerminais'),
   pdvDesativarTerminal: chamavel('desativarTerminal'),
   pdvAcessos: chamavel('acessos'),
+  pdvSair: chamavel('sair'),
 }

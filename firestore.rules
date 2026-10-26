@@ -505,35 +505,48 @@ service cloud.firestore {
 
     // --- PDV (pdvmarkfy) ---------------------------------------------------
     //
-    // O PDV não usa contas do clube: quem entra recebe das funções (pdv*, em
-    // functions/pdv/) um token próprio com a claim `pdv`:
-    //   'u' — uma pessoa (caixa e cozinha com PIN, retaguarda com o Google),
-    //         com `usuario` (id em pdv_usuarios) e `ate` (fim da sessão, em ms);
-    //   't' — um computador liberado por um gerente; não lê nada daqui, só
-    //         chama as funções de login.
+    // O PDV não usa contas do clube. Cada computador e cada pessoa entram com
+    // o login anônimo do Firebase (a retaguarda, com o Google), e são as
+    // funções (pdv*, em functions/pdv/) que gravam em pdv_sessoes/{uid} quem
+    // aquele login é:
+    //   tipo 'u' — uma pessoa, com `usuario` (id em pdv_usuarios) e `ate`
+    //              (fim da sessão), depois do PIN ou do Google;
+    //   tipo 't' — um computador liberado por um gerente; não lê nada daqui,
+    //              só chama as funções de login.
     // O PIN e o bloqueio por tentativas estão em pdv_segredos, que ninguém lê:
-    // só as funções. Por isso também são só as funções que gravam usuários,
-    // perfis, computadores, autorizações e o registro de acessos.
+    // só as funções. Por isso também são só as funções que gravam sessões,
+    // usuários, perfis, computadores, autorizações e o registro de acessos.
     //
-    // Nada do clube aceita esse token como equipe: `operador()` depende do
-    // e-mail verificado, que um token do PDV não tem.
+    // Nada do clube aceita esse login como equipe: `operador()` depende do
+    // e-mail cadastrado em equipe/, que um login anônimo não tem.
+
+    function pdvVinculo() {
+      return get(/databases/$(database)/documents/pdv_sessoes/$(request.auth.uid)).data;
+    }
 
     function pdvEu() {
-      return get(/databases/$(database)/documents/pdv_usuarios/$(request.auth.token.usuario)).data;
+      return get(/databases/$(database)/documents/pdv_usuarios/$(pdvVinculo().usuario)).data;
     }
 
     function pdvSessao() {
       return logado()
-          && request.auth.token.get('pdv', '') == 'u'
-          && request.time.toMillis() < request.auth.token.get('ate', 0)
-          && exists(/databases/$(database)/documents/pdv_usuarios/$(request.auth.token.usuario))
+          && exists(/databases/$(database)/documents/pdv_sessoes/$(request.auth.uid))
+          && pdvVinculo().tipo == 'u'
+          && request.time < pdvVinculo().ate
+          && exists(/databases/$(database)/documents/pdv_usuarios/$(pdvVinculo().usuario))
           && pdvEu().ativo == true;
+    }
+
+    // Cada login lê a própria sessão (é assim que a tela sabe quem é).
+    match /pdv_sessoes/{uid} {
+      allow get: if logado() && request.auth.uid == uid;
+      allow list, write: if false;
     }
 
     // A própria ficha (nome, perfil, filiais): é dela que a tela tira o que
     // mostrar. Desativar alguém derruba a leitura na hora.
     match /pdv_usuarios/{id} {
-      allow get: if pdvSessao() && request.auth.token.usuario == id;
+      allow get: if pdvSessao() && pdvVinculo().usuario == id;
       allow list, write: if false;
     }
 

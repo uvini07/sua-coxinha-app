@@ -2,17 +2,19 @@
 //
 // Quem decide quem entra no PDV é este arquivo, não o navegador. O PIN e o
 // bloqueio por tentativas moram em `pdv_segredos`, que as regras não deixam
-// ninguém ler. Quem passa recebe um token do Firebase com o próprio id, e as
-// regras do Firestore conferem esse token em cada leitura.
+// ninguém ler.
 //
-// Três identidades:
-//   · Computador (pdvt_<id>) — liberado uma vez por um gerente; fica no
-//     navegador e só serve para listar quem atende ali e conferir o PIN.
-//   · Pessoa     (pdvu_<id>) — caixa e cozinha entram com PIN num computador
-//     liberado; a retaguarda entra com o Google. Vale 12 h (claim `ate`).
-//   · Google — só para provar o e-mail antes de virar pdvu_.
+// Sessões, sem token assinado (e por isso sem precisar de permissão de IAM):
+//   · Computador — entra com o login anônimo do Firebase. Um gerente libera
+//     esse login uma vez: pdv_sessoes/{uid} = { tipo: 't', terminal }.
+//   · Pessoa no caixa ou na cozinha — também entra anônima; o computador
+//     manda o PIN dela e, se conferir, a função grava
+//     pdv_sessoes/{uid} = { tipo: 'u', usuario, ate, ... } (vale 12 h).
+//   · Retaguarda — entra com o Google; a sessão é gravada no uid do Google.
+// As regras do Firestore conferem essa sessão em cada leitura.
 //
 // Coleções (todas fora do alcance do clube):
+//   pdv_sessoes/{uid}      quem está logado com cada login do Firebase
 //   pdv_usuarios/{id}      quem usa o PDV (sem segredo nenhum)
 //   pdv_segredos/{id}      hash do PIN e tentativas — só as funções leem
 //   pdv_perfis/{id}        perfis de acesso e permissões
@@ -39,6 +41,7 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
   const segredos = db.collection('pdv_segredos')
   const perfis = db.collection('pdv_perfis')
   const terminais = db.collection('pdv_terminais')
+  const sessoes = db.collection('pdv_sessoes')
 
   const falha = (codigo, mensagem, detalhes) => new HttpsError(codigo, mensagem, detalhes)
   const invalido = (erros) => falha('invalid-argument', Object.values(erros)[0], { erros })
@@ -100,29 +103,44 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
     return R.email(t.email)
   }
 
+  async function sessaoDe(req) {
+    const uid = req.auth?.uid
+    return uid ? ler(sessoes.doc(uid)) : null
+  }
+
   async function exigirTerminal(req) {
-    const t = req.auth?.token
-    if (t?.pdv !== 't' || !R.idValido(t.terminal)) throw falha('unauthenticated', 'Este computador não está liberado como caixa.', { motivo: 'sem-terminal' })
-    const terminal = await ler(terminais.doc(t.terminal))
+    const v = await sessaoDe(req)
+    if (v?.tipo !== 't' || !R.idValido(v.terminal)) throw falha('unauthenticated', 'Este computador não está liberado como caixa.', { motivo: 'sem-terminal' })
+    const terminal = await ler(terminais.doc(v.terminal))
     if (!terminal?.ativo) throw falha('permission-denied', 'Este computador foi desligado do PDV. Peça a um gerente para liberar de novo.', { motivo: 'terminal-inativo' })
     return terminal
   }
 
   async function exigirOperador(req, permissao) {
-    const t = req.auth?.token
-    if (t?.pdv !== 'u' || !R.idValido(t.usuario)) throw falha('unauthenticated', 'Entre no PDV de novo.', { motivo: 'sem-sessao' })
-    if (!(Number(t.ate) > agora())) throw falha('unauthenticated', 'A sessão expirou. Entre de novo.', { motivo: 'sessao-expirada' })
-    const usuario = await lerUsuario(t.usuario)
+    const v = await sessaoDe(req)
+    if (v?.tipo !== 'u' || !R.idValido(v.usuario)) throw falha('unauthenticated', 'Entre no PDV de novo.', { motivo: 'sem-sessao' })
+    if (!(ms(v.ate) > agora())) throw falha('unauthenticated', 'A sessão expirou. Entre de novo.', { motivo: 'sessao-expirada' })
+    const usuario = await lerUsuario(v.usuario)
     if (!usuario?.ativo) throw falha('permission-denied', 'Seu acesso ao PDV foi desativado.', { motivo: 'usuario-inativo' })
     const perfil = await lerPerfil(usuario.perfilId)
     if (permissao && !R.pode(usuario, perfil, permissao)) throw falha('permission-denied', 'Seu perfil não pode fazer isso.')
-    return { usuario, perfil, sessao: t }
+    return { usuario, perfil, sessao: v }
   }
 
-  async function tokenDaPessoa(usuario, extra) {
+  // O login anônimo que o navegador criou para a pessoa ou para o computador.
+  // O token prova que ele é dono daquele uid (conferência com chave pública:
+  // não precisa de permissão de IAM).
+  async function uidAnonimo(token) {
+    if (typeof token !== 'string' || !token) throw falha('invalid-argument', 'Entre de novo.')
+    const d = await auth.verifyIdToken(token).catch(() => null)
+    if (d?.firebase?.sign_in_provider !== 'anonymous') throw falha('unauthenticated', 'Entre de novo.')
+    return d.uid
+  }
+
+  async function abrirSessao(uid, usuario, extra) {
     const ate = agora() + R.SESSAO_HORAS * 3_600_000
-    const token = await auth.createCustomToken(`pdvu_${usuario.id}`, { pdv: 'u', usuario: usuario.id, ate, ...extra })
-    return { token, ate }
+    await sessoes.doc(uid).set({ tipo: 'u', usuario: usuario.id, ate: Timestamp.fromMillis(ate), filial: null, terminal: null, ...extra, criadoEm: FieldValue.serverTimestamp() })
+    return ate
   }
 
   // --- PIN com bloqueio --------------------------------------------------------
@@ -240,9 +258,9 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
     }
     const perfil = await lerPerfil(usuario.perfilId)
     if (!R.temRetaguarda(perfil)) throw falha('permission-denied', 'Seu perfil não tem acesso à retaguarda.')
-    const { token, ate } = await tokenDaPessoa(usuario, { modo: 'admin' })
+    const ate = await abrirSessao(req.auth.uid, usuario, { modo: 'admin' })
     await registrar('acesso.entrou', 'Retaguarda (Google)', { usuario })
-    return { token, ate, usuario: publico(usuario) }
+    return { ate, usuario: publico(usuario) }
   }
 
   async function operadores(req) {
@@ -271,12 +289,12 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
     const perfil = await lerPerfil(usuario.perfilId)
     if (!R.pode(usuario, perfil, modo === 'caixa' ? 'caixa.vender' : 'cozinha.ver'))
       throw falha('permission-denied', modo === 'caixa' ? 'Seu perfil não registra pedidos no caixa.' : 'Seu perfil não tem acesso à cozinha.')
-    const { token, ate } = await tokenDaPessoa(usuario, { modo, filial: terminal.filialId, terminal: terminal.id })
+    const ate = await abrirSessao(await uidAnonimo(req.data?.tokenPessoa), usuario, { modo, filial: terminal.filialId, terminal: terminal.id })
     await Promise.all([
       terminais.doc(terminal.id).update({ ultimoUso: FieldValue.serverTimestamp() }),
       registrar('acesso.entrou', `${modo === 'caixa' ? 'Caixa' : 'Cozinha'} (${terminal.nome})`, { usuario, ...ctx }),
     ])
-    return { token, ate, usuario: publico(usuario), filialId: terminal.filialId, pdvId: terminal.pdvId }
+    return { ate, usuario: publico(usuario), filialId: terminal.filialId, pdvId: terminal.pdvId }
   }
 
   // Tela bloqueada por inatividade: a própria pessoa destrava com o PIN dela.
@@ -403,8 +421,8 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
     else if (d.removerPin) lote.set(segredos.doc(ref.id), { pin: null, tentativas: 0, bloqueadoAte: null })
     await lote.commit()
 
-    // Desativado: os tokens dele param de renovar e as regras já recusam na hora.
-    if (atual?.ativo && !ativo) await auth.revokeRefreshTokens(`pdvu_${ref.id}`).catch(() => {})
+    // Desativado: as sessões abertas dele somem (e as regras já recusam na hora).
+    if (atual?.ativo && !ativo) await apagarSessoes('usuario', ref.id)
 
     const ctx = { usuario: autor, filialId: sessao.filial || null }
     await registrar(novo ? 'usuario.criado' : 'usuario.alterado', nome, ctx)
@@ -479,11 +497,14 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
     const nome = R.texto(req.data?.nome, 40)
     if (!R.idValido(filialId) || !R.idValido(pdvId) || !nome) throw falha('invalid-argument', 'Escolha a loja e o caixa deste computador.')
     if (!R.acessaFilial(usuario, filialId)) throw falha('permission-denied', 'Você não tem acesso a esta filial.')
+    const uidComputador = await uidAnonimo(req.data?.tokenComputador)
     const ref = terminais.doc()
-    await ref.set({ filialId, pdvId, nome, ativo: true, criadoPor: usuario.id, criadoPorNome: usuario.nome, criadoEm: FieldValue.serverTimestamp(), ultimoUso: null })
-    const token = await auth.createCustomToken(`pdvt_${ref.id}`, { pdv: 't', terminal: ref.id, filial: filialId })
+    const lote = db.batch()
+    lote.set(ref, { filialId, pdvId, nome, ativo: true, criadoPor: usuario.id, criadoPorNome: usuario.nome, criadoEm: FieldValue.serverTimestamp(), ultimoUso: null })
+    lote.set(sessoes.doc(uidComputador), { tipo: 't', terminal: ref.id, filial: filialId, criadoEm: FieldValue.serverTimestamp() })
+    await lote.commit()
     await registrar('terminal.liberado', `${nome} (caixa ${pdvId})`, { usuario, filialId, terminalId: ref.id })
-    return { token, terminal: { id: ref.id, filialId, pdvId, nome } }
+    return { terminal: { id: ref.id, filialId, pdvId, nome } }
   }
 
   async function listarTerminais(req) {
@@ -504,8 +525,23 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
     if (!terminal) throw falha('not-found', 'Computador não encontrado.')
     if (!R.acessaFilial(usuario, terminal.filialId)) throw falha('permission-denied', 'Você não tem acesso a esta filial.')
     await terminais.doc(id).update({ ativo: false, desativadoPor: usuario.id, desativadoEm: FieldValue.serverTimestamp() })
-    await auth.revokeRefreshTokens(`pdvt_${id}`).catch(() => {})
+    await apagarSessoes('terminal', id)
     await registrar('terminal.desligado', terminal.nome, { usuario, filialId: terminal.filialId, terminalId: sessao.terminal || null })
+    return { ok: true }
+  }
+
+  async function apagarSessoes(campo, id) {
+    const s = await sessoes.where(campo, '==', id).get()
+    if (s.empty) return
+    const lote = db.batch()
+    s.docs.forEach((d) => lote.delete(d.ref))
+    await lote.commit()
+  }
+
+  // Sair: a sessão daquele login some na hora (não fica valendo até vencer).
+  async function sair(req) {
+    const v = await sessaoDe(req)
+    if (v?.tipo === 'u') await sessoes.doc(req.auth.uid).delete()
     return { ok: true }
   }
 
@@ -538,6 +574,7 @@ function criarServico({ db, auth, agora = () => Date.now() }) {
     listarTerminais,
     desativarTerminal,
     acessos,
+    sair,
   }
 }
 

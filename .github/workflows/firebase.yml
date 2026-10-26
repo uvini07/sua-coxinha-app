@@ -9,12 +9,9 @@
 #      inteiro no secret FIREBASE_SERVICE_ACCOUNT.
 #   3. (Opcional) Variável REGIAO_FUNCOES com a região do banco, se não for
 #      southamerica-east1. Settings → Secrets and variables → Actions → Variables.
-#   4. Login do PDV (funções pdv*): a conta de serviço das funções precisa
-#      assinar tokens. Google Cloud → IAM → na conta
-#      "<número>-compute@developer.gserviceaccount.com" → Editar → Adicionar
-#      papel "Criador de token da conta de serviço" (Service Account Token
-#      Creator). E ative a "IAM Service Account Credentials API". Sem isso, o
-#      PDV responde "não foi possível entrar" em todo login.
+#   4. Login do PDV (funções pdv*): Firebase → Authentication → Método de
+#      login → ligar o provedor "Anônimo" (o computador e a pessoa do caixa
+#      entram por ele; não precisa de IAM).
 #      (Opcional) Variável PDV_ORIGENS com o domínio próprio do PDV.
 #
 # Sem o secret, o workflow avisa e não faz nada — não quebra os outros builds.

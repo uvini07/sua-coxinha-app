@@ -212,15 +212,16 @@ aqui, numa seção própria de `firestore.rules` — o PDV nunca publica regras.
 
 ```
 functions/pdv/servico.js       login do PDV: PIN conferido no servidor, bloqueio por tentativas,
-                               computadores liberados, usuários, perfis e autorizações
+                               sessões, computadores liberados, usuários, perfis e autorizações
 functions/pdv/servico.test.js  testes no emulador (npm run testar:pdv)
 testes/pdv.test.mjs            regras do PDV (rodam junto em npm run testar:regras)
 ```
 
 As coleções do PDV começam com `pdv_` e não encostam nas do clube; um token do PDV não vira
-equipe do clube (testado). Para as funções do PDV emitirem o login, a conta de serviço das
-funções precisa do papel "Criador de token da conta de serviço" — passo 4 no topo de
-`.github/workflows/firebase.yml`.
+equipe do clube (testado). O computador e a pessoa do caixa entram com o login **Anônimo**
+do Firebase, e as funções gravam em `pdv_sessoes` quem cada login é — por isso o provedor
+Anônimo precisa estar ligado em Authentication (passo 4 no topo de
+`.github/workflows/firebase.yml`). Não precisa de IAM.
 
 ```bash
 npm run testar:pdv      # funções do login do PDV no emulador (Firestore + Auth)

@@ -495,6 +495,9 @@ await teste('soma valor do pedido no WhatsApp', () => assertSucceeds(contar(anon
 await teste('RECUSA somar +5 numa chave comum', () => assertFails(contar(anonimo, 'cajamar', 'pv', 5)))
 await teste('RECUSA valor acima de R$ 2.000', () => assertFails(contar(anonimo, 'cajamar', 'valor_whatsapp', 300000)))
 await teste('RECUSA loja que não existe', () => assertFails(contar(anonimo, 'loja-falsa', 'pv')))
+await teste('visitante conta na página inicial (raiz)', () => assertSucceeds(contar(anonimo, 'raiz', 'pv')))
+await teste('RECUSA franqueado ler a raiz', () => assertFails(getDocs(collection(franq, 'sitePorLoja', 'raiz', 'dias'))))
+await teste('admin lê a raiz', () => assertSucceeds(getDocs(collection(admin, 'sitePorLoja', 'raiz', 'dias'))))
 await teste('RECUSA dia com formato errado', () =>
   assertFails(setDoc(doc(anonimo, 'sitePorLoja', 'cajamar', 'dias', 'ontem'), { _k: 'pv', pv: 1 })))
 await teste('RECUSA mudar duas chaves de uma vez', () =>

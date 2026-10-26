@@ -8,6 +8,8 @@
 //   avisarDobro   admin lançou pontos em dobro         → push para todos
 //   relatorioSite painel do franqueado no site          → números do GA4 da loja
 //                 (relatorioSite.js)
+//   pdv*          login do PDV (pdvmarkfy): PIN conferido aqui, computadores
+//                 liberados, usuários e perfis (pdv/)
 //
 // Exigem o plano Blaze (pago por uso; nesse volume, centavos por mês).
 // Publicação: workflow .github/workflows/firebase.yml.
@@ -26,6 +28,7 @@ initializeApp()
 setGlobalOptions({ region: process.env.REGIAO_FUNCOES || 'southamerica-east1', maxInstances: 5 })
 
 exports.relatorioSite = require('./relatorioSite.js').relatorioSite
+Object.assign(exports, require('./pdv/index.js'))
 
 const TOPICO_PROMOCOES = 'promocoes'
 const reais = (centavos) => (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })

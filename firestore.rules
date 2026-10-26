@@ -466,6 +466,8 @@ service cloud.firestore {
     // campo `_k` diz qual chave mudou. `valor_whatsapp` soma o valor do pedido
     // em centavos (até R$ 2.000 por pedido). Nenhum dado pessoal é gravado.
     // O painel do franqueado (site /painel) lê só a própria loja.
+    // `raiz` é a página inicial do site (escolha da loja, bolinha Pedir, jogos):
+    // não é loja, então só o admin lê.
 
     match /sitePorLoja/{loja}/dias/{dia} {
       function chaveOk(k) {
@@ -481,7 +483,7 @@ service cloud.firestore {
 
       function lojaOk() {
         return dia.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-            && exists(/databases/$(database)/documents/lojas/$(loja));
+            && (loja == 'raiz' || exists(/databases/$(database)/documents/lojas/$(loja)));
       }
 
       allow read: if souAdmin() || (souFranqueado() && minhaLoja() == loja);

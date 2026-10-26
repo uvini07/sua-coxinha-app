@@ -204,12 +204,34 @@ src/
   estilos/tokens.css      as variáveis do Figma viradas CSS
 ```
 
-## Quando o PDV entrar
+## PDV (pdvmarkfy) no mesmo projeto
+
+O PDV das lojas ([uvini07/pdvmarkfy](https://github.com/uvini07/pdvmarkfy)) usa este mesmo
+projeto do Firebase. Como um projeto tem **um arquivo de regras só**, as regras do PDV moram
+aqui, numa seção própria de `firestore.rules` — o PDV nunca publica regras.
+
+```
+functions/pdv/servico.js       login do PDV: PIN conferido no servidor, bloqueio por tentativas,
+                               computadores liberados, usuários, perfis e autorizações
+functions/pdv/servico.test.js  testes no emulador (npm run testar:pdv)
+testes/pdv.test.mjs            regras do PDV (rodam junto em npm run testar:regras)
+```
+
+As coleções do PDV começam com `pdv_` e não encostam nas do clube; um token do PDV não vira
+equipe do clube (testado). Para as funções do PDV emitirem o login, a conta de serviço das
+funções precisa do papel "Criador de token da conta de serviço" — passo 4 no topo de
+`.github/workflows/firebase.yml`.
+
+```bash
+npm run testar:pdv      # funções do login do PDV no emulador (Firestore + Auth)
+```
+
+## Quando o PDV registrar as vendas
 
 Hoje a equipe registra a compra à mão no celular (`registrarCompraNoCaixa()`, em
-`src/firebase/equipe.js`), e as regras do Firestore conferem cada lote. Com o PDV, uma Cloud
-Function passa a fazer o mesmo lote com o Admin SDK a partir da venda real — e o caminho de
-crédito pela equipe pode ser fechado em `firestore.rules`.
+`src/firebase/equipe.js`), e as regras do Firestore conferem cada lote. Quando as vendas do PDV
+forem para o servidor, uma Cloud Function passa a fazer o mesmo lote com o Admin SDK a partir da
+venda real — e o caminho de crédito pela equipe pode ser fechado em `firestore.rules`.
 
 As regras de pontuação vivem em `config/regras` (editável no painel); os preços das
 recompensas, em `config/catalogo`. Os números de `src/dados/clube.js` são só o ponto de

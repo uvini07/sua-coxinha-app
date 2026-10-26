@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --port 4173",
-    "testar:regras": "firebase emulators:exec --only firestore --project suacoxinhaapp \"node testes/regras.test.mjs\"",
+    "testar:regras": "firebase emulators:exec --only firestore --project suacoxinhaapp \"node testes/regras.test.mjs && node testes/pdv.test.mjs\"",
+    "testar:pdv": "firebase emulators:exec --only firestore,auth --project suacoxinhaapp \"node --test functions/pdv/servico.test.js\"",
     "app:sync": "npm run build && cap sync",
     "app:android": "npm run build && cap sync android && cap open android",
     "app:ios": "npm run build && cap sync ios && cap open ios"

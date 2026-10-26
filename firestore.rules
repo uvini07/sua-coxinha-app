@@ -503,6 +503,50 @@ service cloud.firestore {
       allow delete: if souAdmin();
     }
 
+    // --- PDV (pdvmarkfy) ---------------------------------------------------
+    //
+    // O PDV não usa contas do clube: quem entra recebe das funções (pdv*, em
+    // functions/pdv/) um token próprio com a claim `pdv`:
+    //   'u' — uma pessoa (caixa e cozinha com PIN, retaguarda com o Google),
+    //         com `usuario` (id em pdv_usuarios) e `ate` (fim da sessão, em ms);
+    //   't' — um computador liberado por um gerente; não lê nada daqui, só
+    //         chama as funções de login.
+    // O PIN e o bloqueio por tentativas estão em pdv_segredos, que ninguém lê:
+    // só as funções. Por isso também são só as funções que gravam usuários,
+    // perfis, computadores, autorizações e o registro de acessos.
+    //
+    // Nada do clube aceita esse token como equipe: `operador()` depende do
+    // e-mail verificado, que um token do PDV não tem.
+
+    function pdvEu() {
+      return get(/databases/$(database)/documents/pdv_usuarios/$(request.auth.token.usuario)).data;
+    }
+
+    function pdvSessao() {
+      return logado()
+          && request.auth.token.get('pdv', '') == 'u'
+          && request.time.toMillis() < request.auth.token.get('ate', 0)
+          && exists(/databases/$(database)/documents/pdv_usuarios/$(request.auth.token.usuario))
+          && pdvEu().ativo == true;
+    }
+
+    // A própria ficha (nome, perfil, filiais): é dela que a tela tira o que
+    // mostrar. Desativar alguém derruba a leitura na hora.
+    match /pdv_usuarios/{id} {
+      allow get: if pdvSessao() && request.auth.token.usuario == id;
+      allow list, write: if false;
+    }
+
+    // Perfis e permissões: toda pessoa logada no PDV lê, para a tela esconder
+    // o que ela não pode. Quem decide de verdade são as funções.
+    match /pdv_perfis/{id} {
+      allow read: if pdvSessao();
+      allow write: if false;
+    }
+
+    // pdv_segredos, pdv_terminais, pdv_autorizacoes, pdv_auditoria e pdv_config
+    // ficam com a regra abaixo: só as funções (Admin SDK) alcançam.
+
     // Nada mais no banco é alcançável pelo app.
     match /{documento=**} {
       allow read, write: if false;

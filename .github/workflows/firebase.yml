@@ -9,6 +9,13 @@
 #      inteiro no secret FIREBASE_SERVICE_ACCOUNT.
 #   3. (Opcional) Variável REGIAO_FUNCOES com a região do banco, se não for
 #      southamerica-east1. Settings → Secrets and variables → Actions → Variables.
+#   4. Login do PDV (funções pdv*): a conta de serviço das funções precisa
+#      assinar tokens. Google Cloud → IAM → na conta
+#      "<número>-compute@developer.gserviceaccount.com" → Editar → Adicionar
+#      papel "Criador de token da conta de serviço" (Service Account Token
+#      Creator). E ative a "IAM Service Account Credentials API". Sem isso, o
+#      PDV responde "não foi possível entrar" em todo login.
+#      (Opcional) Variável PDV_ORIGENS com o domínio próprio do PDV.
 #
 # Sem o secret, o workflow avisa e não faz nada — não quebra os outros builds.
 
@@ -68,6 +75,8 @@ jobs:
           echo "REGIAO_FUNCOES=${{ vars.REGIAO_FUNCOES || 'southamerica-east1' }}" > functions/.env
           # Propriedade do GA4 lida pelo painel do franqueado no site (relatorioSite).
           echo "GA_PROPERTY_ID=${{ vars.GA_PROPERTY_ID }}" >> functions/.env
+          # Domínios próprios do PDV, além de *.vercel.app (separados por vírgula).
+          echo "PDV_ORIGENS=${{ vars.PDV_ORIGENS }}" >> functions/.env
 
       - name: Publicar
         if: steps.chave.outputs.ok == 'sim'
